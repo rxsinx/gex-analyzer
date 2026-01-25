@@ -1,110 +1,87 @@
-# modules/utils.py
+"""
+Utility functions for GEX Analyzer
+"""
 
+import pandas as pd
 from datetime import datetime, timedelta
 import calendar
 
-class IndianExpiryCalculator:
-    """
-    Calculate expiry dates for Indian indices
-    """
-    
-    # Expiry schedule
-    EXPIRY_SCHEDULE = {
-        'NIFTY': {
-            'weekly_expiry': 'Thursday',
-            'monthly_expiry': 'Last Thursday',
-        },
-        'BANKNIFTY': {
-            'weekly_expiry': 'Wednesday',
-            'monthly_expiry': 'Last Wednesday',
-        }
-    }
-    
-    @staticmethod
-    def get_next_expiry_date(symbol='NIFTY', expiry_type='weekly', reference_date=None):
-        """
-        Get next expiry date for Indian indices
-        """
-        if reference_date is None:
-            reference_date = datetime.now()
-        
-        schedule = IndianExpiryCalculator.EXPIRY_SCHEDULE[symbol]
-        
-        if expiry_type == 'weekly':
-            return IndianExpiryCalculator._get_next_weekly_expiry(
-                reference_date, schedule['weekly_expiry']
-            )
-        else:  # monthly
-            return IndianExpiryCalculator._get_next_monthly_expiry(
-                reference_date, schedule['weekly_expiry']
-            )
-    
-    @staticmethod
-    def _get_next_weekly_expiry(reference_date, expiry_day_name):
-        """
-        Get next weekly expiry date
-        """
-        day_map = {
-            'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 
-            'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6
-        }
-        
-        target_day = day_map[expiry_day_name]
-        current_day = reference_date.weekday()
-        
-        days_ahead = target_day - current_day
-        if days_ahead < 0:  # If already past this week's expiry
-            days_ahead += 7
-        
-        expiry_date = reference_date + timedelta(days=days_ahead)
-        
-        # If the market is closed on expiry day, adjust? (Not handling holidays here)
-        return expiry_date
-    
-    @staticmethod
-    def _get_next_monthly_expiry(reference_date, weekly_expiry_day):
-        """
-        Get next monthly expiry (last weekly expiry of the month)
-        """
-        year = reference_date.year
-        month = reference_date.month
-        
-        last_expiry = IndianExpiryCalculator._get_last_weekday_of_month(
-            year, month, weekly_expiry_day
-        )
-        
-        if reference_date > last_expiry:
-            month += 1
-            if month > 12:
-                month = 1
-                year += 1
-            last_expiry = IndianExpiryCalculator._get_last_weekday_of_month(
-                year, month, weekly_expiry_day
-            )
-        
-        return last_expiry
-    
-    @staticmethod
-    def _get_last_weekday_of_month(year, month, weekday_name):
-        """
-        Get last specific weekday of the month
-        """
-        day_map = {
-            'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 
-            'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6
-        }
-        target_weekday = day_map[weekday_name]
-        
-        last_day = calendar.monthrange(year, month)[1]
-        
-        for day in range(last_day, 0, -1):
-            date_obj = datetime(year, month, day)
-            if date_obj.weekday() == target_weekday:
-                return date_obj
-        
-        return None
 
-    def calculate_time_to_expiry(expiry_date_str):
+def get_next_expiry(expiry_type='weekly'):
+    """
+    Get the next expiry date for options
+    
+    Args:
+        expiry_type (str): 'weekly' or 'monthly'
+    
+    Returns:
+        str: Expiry date in DD-MMM-YYYY format
+    """
+    today = datetime.now()
+    
+    if expiry_type == 'weekly':
+        # Next Thursday
+        days_ahead = 3 - today.weekday()  # Thursday is 3
+        if days_ahead <= 0:
+            days_ahead += 7
+        expiry = today + timedelta(days=days_ahead)
+    else:
+        # Last Thursday of current month
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        last_date = datetime(today.year, today.month, last_day)
+        
+        # Find last Thursday
+        offset = (last_date.weekday() - 3) % 7
+        expiry = last_date - timedelta(days=offset)
+        
+        # If we've passed it, get next month's
+        if expiry < today:
+            if today.month == 12:
+                next_month = datetime(today.year + 1, 1, 1)
+            else:
+                next_month = datetime(today.year, today.month + 1, 1)
+            
+            last_day = calendar.monthrange(next_month.year, next_month.month)[1]
+            last_date = datetime(next_month.year, next_month.month, last_day)
+            offset = (last_date.weekday() - 3) % 7
+            expiry = last_date - timedelta(days=offset)
+    
+    return expiry.strftime('%d-%b-%Y').upper()
+
+
+def get_atm_strike(spot_price, strike_interval=50):
+    """
+    Get the At-The-Money strike price
+    
+    Args:
+        spot_price (float): Current spot price
+        strike_interval (int): Strike price interval
+    
+    Returns:
+        int: ATM strike price
+    """
+    return round(spot_price / strike_interval) * strike_interval
+
+
+def format_number(num):
+    """
+    Format large numbers for display
+    
+    Args:
+        num (float): Number to format
+    
+    Returns:
+        str: Formatted number
+    """
+    if abs(num) >= 10000000:  # 1 crore
+        return f"₹{num/10000000:.2f}Cr"
+    elif abs(num) >= 100000:  # 1 lakh
+        return f"₹{num/100000:.2f}L"
+    else:
+        return f"₹{num:,.0f}"
+
+
+def calculate_time_to_expiry(expiry_date_str):
     """
     Calculate time to expiry in years
     
@@ -121,3 +98,44 @@ class IndianExpiryCalculator:
         return max(days_to_expiry / 365.0, 0.0027)  # Minimum 1 day
     except:
         return 0.0027  # Default to 1 day
+
+
+def filter_strikes(df, spot_price, range_pct=10):
+    """
+    Filter strikes within a percentage range of spot price
+    
+    Args:
+        df (pd.DataFrame): Options data
+        spot_price (float): Current spot price
+        range_pct (int): Percentage range around spot
+    
+    Returns:
+        pd.DataFrame: Filtered dataframe
+    """
+    lower_bound = spot_price * (1 - range_pct/100)
+    upper_bound = spot_price * (1 + range_pct/100)
+    
+    return df[(df['strike'] >= lower_bound) & (df['strike'] <= upper_bound)]
+
+
+def get_available_expiries():
+    """
+    Get list of available expiry dates (next 3 months)
+    
+    Returns:
+        list: List of expiry dates
+    """
+    expiries = []
+    today = datetime.now()
+    
+    # Get next 12 weekly expiries
+    current = today
+    for _ in range(12):
+        days_ahead = 3 - current.weekday()
+        if days_ahead <= 0:
+            days_ahead += 7
+        expiry = current + timedelta(days=days_ahead)
+        expiries.append(expiry.strftime('%d-%b-%Y').upper())
+        current = expiry + timedelta(days=1)
+    
+    return expiries
