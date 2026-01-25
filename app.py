@@ -251,8 +251,8 @@ with tab1:
         fig1 = GEXVisualizations.create_gex_summary_metrics(gex_results, "NIFTY", nifty_spot)
         st.plotly_chart(fig1, use_container_width=True)
         
-        fig2 = GEXVisualizations.create_gex_dashboard(gex_results, "NIFTY", nifty_spot)
-        st.plotly_chart(fig2, use_container_width=True)
+        fig_gex = plot_gex_profile(gex_df, spot_price, gamma_levels)
+        st.plotly_chart(fig_gex, use_container_width=True)
         
     else:  # BANKNIFTY
         st.markdown('<p class="sub-header">📊 BANKNIFTY GEX Analysis</p>', unsafe_allow_html=True)
