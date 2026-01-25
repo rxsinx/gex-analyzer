@@ -103,3 +103,21 @@ class IndianExpiryCalculator:
                 return date_obj
         
         return None
+
+    def calculate_time_to_expiry(expiry_date_str):
+    """
+    Calculate time to expiry in years
+    
+    Args:
+        expiry_date_str (str): Expiry date in DD-MMM-YYYY format
+    
+    Returns:
+        float: Time to expiry in years
+    """
+    try:
+        expiry_date = datetime.strptime(expiry_date_str, '%d-%b-%Y')
+        today = datetime.now()
+        days_to_expiry = (expiry_date - today).days
+        return max(days_to_expiry / 365.0, 0.0027)  # Minimum 1 day
+    except:
+        return 0.0027  # Default to 1 day
