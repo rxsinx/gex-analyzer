@@ -1,227 +1,285 @@
-# modules/visualizations.py
+"""
+Visualization module for GEX analysis
+"""
 
 import plotly.graph_objects as go
+import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
-import numpy as np
 
-class GEXVisualizations:
-    """Create interactive visualizations for GEX analysis"""
+
+def plot_gex_profile(gex_df, spot_price, gamma_levels):
+    """
+    Plot GEX profile with call and put GEX
     
-    @staticmethod
-    def create_gex_dashboard(gex_data: dict, symbol: str, spot_price: float) -> go.Figure:
-        """
-        Create comprehensive GEX dashboard with multiple plots
-        """
-        results_df = gex_data['results_df']
-        
-        # Create subplots
-        fig = make_subplots(
-            rows=3, cols=2,
-            subplot_titles=(
-                f'{symbol} GEX by Strike',
-                f'{symbol} Implied Volatility Smile',
-                f'{symbol} Open Interest Distribution',
-                f'{symbol} Call vs Put GEX',
-                f'{symbol} PCR by Strike',
-                f'{symbol} Gamma Profile'
-            ),
-            vertical_spacing=0.12,
-            horizontal_spacing=0.15
-        )
-        
-        # Prepare data
-        calls_df = results_df[results_df['option_type'] == 'CE']
-        puts_df = results_df[results_df['option_type'] == 'PE']
-        
-        # 1. GEX by Strike
-        fig.add_trace(
-            go.Bar(
-                x=results_df['strike'],
-                y=results_df['dealer_gex_crores'],
-                name='Dealer GEX',
-                marker_color='rgba(55, 128, 191, 0.7)',
-                hovertemplate='Strike: %{x}<br>GEX: ₹%{y:.2f}Cr<extra></extra>'
-            ),
-            row=1, col=1
-        )
-        
-        # Add spot price line
-        fig.add_vline(x=spot_price, line_dash="dash", line_color="red", 
-                     annotation_text="Spot", annotation_position="top right",
-                     row=1, col=1)
-        
-        # 2. IV Smile
-        if not calls_df.empty:
-            fig.add_trace(
-                go.Scatter(
-                    x=calls_df['strike'],
-                    y=calls_df['iv'] * 100,
-                    mode='lines+markers',
-                    name='Call IV',
-                    line=dict(color='green'),
-                    hovertemplate='Strike: %{x}<br>IV: %{y:.2f}%<extra></extra>'
-                ),
-                row=1, col=2
-            )
-        
-        if not puts_df.empty:
-            fig.add_trace(
-                go.Scatter(
-                    x=puts_df['strike'],
-                    y=puts_df['iv'] * 100,
-                    mode='lines+markers',
-                    name='Put IV',
-                    line=dict(color='red'),
-                    hovertemplate='Strike: %{x}<br>IV: %{y:.2f}%<extra></extra>'
-                ),
-                row=1, col=2
-            )
-        
-        # 3. Open Interest Distribution
-        fig.add_trace(
-            go.Bar(
-                x=calls_df['strike'],
-                y=calls_df['open_interest'],
-                name='Call OI',
-                marker_color='green',
-                hovertemplate='Strike: %{x}<br>OI: %{y:,.0f}<extra></extra>'
-            ),
-            row=2, col=1
-        )
-        
-        fig.add_trace(
-            go.Bar(
-                x=puts_df['strike'],
-                y=puts_df['open_interest'],
-                name='Put OI',
-                marker_color='red',
-                hovertemplate='Strike: %{x}<br>OI: %{y:,.0f}<extra></extra>'
-            ),
-            row=2, col=1
-        )
-        
-        # 4. Call vs Put GEX
-        fig.add_trace(
-            go.Bar(
-                x=calls_df['strike'],
-                y=calls_df['dealer_gex_crores'],
-                name='Call GEX',
-                marker_color='rgba(0, 128, 0, 0.6)',
-                hovertemplate='Strike: %{x}<br>Call GEX: ₹%{y:.2f}Cr<extra></extra>'
-            ),
-            row=2, col=2
-        )
-        
-        fig.add_trace(
-            go.Bar(
-                x=puts_df['strike'],
-                y=puts_df['dealer_gex_crores'],
-                name='Put GEX',
-                marker_color='rgba(255, 0, 0, 0.6)',
-                hovertemplate='Strike: %{x}<br>Put GEX: ₹%{y:.2f}Cr<extra></extra>'
-            ),
-            row=2, col=2
-        )
-        
-        # 5. PCR by Strike
-        # Merge calls and puts by strike
-        merged_df = pd.merge(
-            calls_df[['strike', 'open_interest']].rename(columns={'open_interest': 'call_oi'}),
-            puts_df[['strike', 'open_interest']].rename(columns={'open_interest': 'put_oi'}),
-            on='strike',
-            how='outer'
-        ).fillna(0)
-        
-        merged_df['pcr'] = merged_df['put_oi'] / merged_df['call_oi'].replace(0, np.nan)
-        
-        fig.add_trace(
-            go.Scatter(
-                x=merged_df['strike'],
-                y=merged_df['pcr'],
-                mode='lines+markers',
-                name='PCR',
-                line=dict(color='purple'),
-                hovertemplate='Strike: %{x}<br>PCR: %{y:.2f}<extra></extra>'
-            ),
-            row=3, col=1
-        )
-        
-        # Add PCR=1 reference line
-        fig.add_hline(y=1, line_dash="dot", line_color="gray", 
-                     annotation_text="PCR=1", row=3, col=1)
-        
-        # 6. Gamma Profile
-        fig.add_trace(
-            go.Scatter(
-                x=results_df['strike'],
-                y=results_df['gamma'] * 10000,  # Scale for better visualization
-                mode='lines',
-                name='Gamma',
-                line=dict(color='orange', width=2),
-                hovertemplate='Strike: %{x}<br>Gamma: %{y:.4f}<extra></extra>'
-            ),
-            row=3, col=2
-        )
-        
-        # Update layout
-        fig.update_layout(
-            height=1000,
-            showlegend=True,
-            template='plotly_white',
-            title=f"{symbol} Gamma Exposure Analysis",
-            title_x=0.5
-        )
-        
-        # Update axes labels
-        fig.update_xaxes(title_text="Strike Price", row=3, col=1)
-        fig.update_xaxes(title_text="Strike Price", row=3, col=2)
-        fig.update_yaxes(title_text="GEX (₹ Crores)", row=1, col=1)
-        fig.update_yaxes(title_text="Implied Volatility %", row=1, col=2)
-        fig.update_yaxes(title_text="Open Interest", row=2, col=1)
-        fig.update_yaxes(title_text="GEX (₹ Crores)", row=2, col=2)
-        fig.update_yaxes(title_text="Put-Call Ratio", row=3, col=1)
-        fig.update_yaxes(title_text="Gamma (scaled)", row=3, col=2)
-        
-        return fig
+    Args:
+        gex_df (pd.DataFrame): GEX data
+        spot_price (float): Current spot price
+        gamma_levels (dict): Key gamma levels
     
-    @staticmethod
-    def create_gex_summary_metrics(gex_data: dict, symbol: str, spot_price: float) -> go.Figure:
-        """
-        Create summary metrics visualization
-        """
-        metrics = [
-            ('Total GEX', f'₹{gex_data["total_gex_crores"]:.2f} Cr', '#4CAF50'),
-            ('Net Dealer GEX', f'₹{gex_data["net_gex_crores"]:.2f} Cr', 
-             '#F44336' if gex_data["net_gex_crores"] < 0 else '#4CAF50'),
-            ('Gamma Flip', f'{gex_data["gamma_flip"]:,.0f}', '#2196F3'),
-            ('PCR (OI)', f'{gex_data["pcr_oi"]:.2f}', 
-             '#FF9800' if gex_data["pcr_oi"] > 1.5 else '#4CAF50'),
-            ('Call OI', f'{gex_data["call_oi"]:,.0f}', '#4CAF50'),
-            ('Put OI', f'{gex_data["put_oi"]:,.0f}', '#F44336'),
-        ]
-        
-        fig = go.Figure()
-        
-        for i, (name, value, color) in enumerate(metrics):
-            fig.add_trace(
-                go.Indicator(
-                    mode="number+delta",
-                    value=float(value.split()[0].replace('₹', '').replace(',', '') 
-                               if 'Cr' in value else float(value.replace(',', ''))),
-                    title={"text": f"<b>{name}</b><br>{value}"},
-                    number={"font": {"size": 24}},
-                    delta={"reference": 0},
-                    domain={"row": i // 3, "column": i % 3}
-                )
-            )
-        
-        fig.update_layout(
-            grid={"rows": 2, "columns": 3, "pattern": "independent"},
-            height=400,
-            template="plotly_white",
-            title=f"{symbol} Key Metrics",
-            title_x=0.5
+    Returns:
+        plotly.graph_objects.Figure: GEX profile chart
+    """
+    fig = go.Figure()
+    
+    # Add Call GEX (negative)
+    fig.add_trace(go.Bar(
+        x=gex_df['strike'],
+        y=gex_df['call_gex'],
+        name='Call GEX',
+        marker_color='rgba(239, 68, 68, 0.7)',
+        hovertemplate='Strike: %{x}<br>Call GEX: %{y:,.0f}<extra></extra>'
+    ))
+    
+    # Add Put GEX (positive)
+    fig.add_trace(go.Bar(
+        x=gex_df['strike'],
+        y=gex_df['put_gex'],
+        name='Put GEX',
+        marker_color='rgba(34, 197, 94, 0.7)',
+        hovertemplate='Strike: %{x}<br>Put GEX: %{y:,.0f}<extra></extra>'
+    ))
+    
+    # Add spot price line
+    fig.add_vline(
+        x=spot_price,
+        line_dash="dash",
+        line_color="blue",
+        annotation_text=f"Spot: {spot_price}",
+        annotation_position="top"
+    )
+    
+    # Add gamma flip line
+    if gamma_levels.get('gamma_flip'):
+        fig.add_vline(
+            x=gamma_levels['gamma_flip'],
+            line_dash="dot",
+            line_color="purple",
+            annotation_text=f"Gamma Flip: {gamma_levels['gamma_flip']}",
+            annotation_position="bottom"
         )
+    
+    # Add zero line
+    fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
+    
+    fig.update_layout(
+        title="Gamma Exposure (GEX) Profile",
+        xaxis_title="Strike Price",
+        yaxis_title="GEX",
+        barmode='relative',
+        hovermode='x unified',
+        template='plotly_white',
+        height=500,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        )
+    )
+    
+    return fig
+
+
+def plot_spot_gex_levels(gex_df, spot_price, gamma_levels, price_range=500):
+    """
+    Plot how GEX changes as spot moves
+    
+    Args:
+        gex_df (pd.DataFrame): GEX data
+        spot_price (float): Current spot price
+        gamma_levels (dict): Key gamma levels
+        price_range (int): Range around spot to simulate
+    
+    Returns:
+        plotly.graph_objects.Figure: Spot vs GEX chart
+    """
+    import numpy as np
+    
+    # Simulate spot prices
+    spot_range = np.arange(spot_price - price_range, spot_price + price_range, 10)
+    gex_at_spot = []
+    
+    for sim_spot in spot_range:
+        # Calculate net GEX at this spot level
+        net_gex = gex_df['total_gex'].sum()
+        gex_at_spot.append(net_gex)
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=spot_range,
+        y=gex_at_spot,
+        mode='lines',
+        name='Net GEX',
+        line=dict(color='blue', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(59, 130, 246, 0.2)'
+    ))
+    
+    # Add current spot
+    fig.add_vline(
+        x=spot_price,
+        line_dash="dash",
+        line_color="red",
+        annotation_text=f"Current: {spot_price}",
+        annotation_position="top"
+    )
+    
+    # Add zero line
+    fig.add_hline(y=0, line_dash="solid", line_color="gray")
+    
+    fig.update_layout(
+        title="Net GEX vs Spot Price",
+        xaxis_title="Spot Price",
+        yaxis_title="Net GEX",
+        template='plotly_white',
+        height=400,
+        hovermode='x unified'
+    )
+    
+    return fig
+
+
+def plot_oi_analysis(df, spot_price):
+    """
+    Plot Open Interest analysis
+    
+    Args:
+        df (pd.DataFrame): Options data
+        spot_price (float): Current spot price
+    
+    Returns:
+        plotly.graph_objects.Figure: OI analysis chart
+    """
+    # Aggregate OI by strike
+    oi_data = df.groupby(['strike', 'type'])['oi'].sum().reset_index()
+    
+    call_oi = oi_data[oi_data['type'] == 'CE'].set_index('strike')['oi']
+    put_oi = oi_data[oi_data['type'] == 'PE'].set_index('strike')['oi']
+    
+    strikes = sorted(df['strike'].unique())
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=strikes,
+        y=[call_oi.get(s, 0) for s in strikes],
+        name='Call OI',
+        marker_color='rgba(239, 68, 68, 0.6)'
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=strikes,
+        y=[put_oi.get(s, 0) for s in strikes],
+        name='Put OI',
+        marker_color='rgba(34, 197, 94, 0.6)'
+    ))
+    
+    # Add spot line
+    fig.add_vline(
+        x=spot_price,
+        line_dash="dash",
+        line_color="blue",
+        annotation_text=f"Spot: {spot_price}"
+    )
+    
+    fig.update_layout(
+        title="Open Interest Distribution",
+        xaxis_title="Strike Price",
+        yaxis_title="Open Interest",
+        barmode='group',
+        template='plotly_white',
+        height=400,
+        hovermode='x unified'
+    )
+    
+    return fig
+
+
+def plot_pcr_analysis(df):
+    """
+    Plot Put-Call Ratio analysis
+    
+    Args:
+        df (pd.DataFrame): Options data
+    
+    Returns:
+        plotly.graph_objects.Figure: PCR chart
+    """
+    pcr_data = df.groupby(['strike', 'type'])['oi'].sum().reset_index()
+    
+    pcr_by_strike = []
+    
+    for strike in sorted(df['strike'].unique()):
+        call_oi = pcr_data[(pcr_data['strike'] == strike) & (pcr_data['type'] == 'CE')]['oi'].sum()
+        put_oi = pcr_data[(pcr_data['strike'] == strike) & (pcr_data['type'] == 'PE')]['oi'].sum()
         
-        return fig
+        pcr = put_oi / call_oi if call_oi > 0 else 0
+        
+        pcr_by_strike.append({
+            'strike': strike,
+            'pcr': pcr,
+            'call_oi': call_oi,
+            'put_oi': put_oi
+        })
+    
+    pcr_df = pd.DataFrame(pcr_by_strike)
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=pcr_df['strike'],
+        y=pcr_df['pcr'],
+        mode='lines+markers',
+        name='PCR',
+        line=dict(color='purple', width=2),
+        marker=dict(size=6)
+    ))
+    
+    # Add PCR = 1 line
+    fig.add_hline(
+        y=1,
+        line_dash="dash",
+        line_color="gray",
+        annotation_text="PCR = 1"
+    )
+    
+    fig.update_layout(
+        title="Put-Call Ratio by Strike",
+        xaxis_title="Strike Price",
+        yaxis_title="PCR (Put OI / Call OI)",
+        template='plotly_white',
+        height=400,
+        hovermode='x unified'
+    )
+    
+    return fig
+
+
+def create_summary_metrics(gex_df, gamma_levels, spot_price):
+    """
+    Create summary metrics display
+    
+    Args:
+        gex_df (pd.DataFrame): GEX data
+        gamma_levels (dict): Key gamma levels
+        spot_price (float): Current spot price
+    
+    Returns:
+        dict: Summary metrics
+    """
+    total_call_gex = gex_df['call_gex'].sum()
+    total_put_gex = gex_df['put_gex'].sum()
+    net_gex = gex_df['total_gex'].sum()
+    
+    return {
+        'Total Call GEX': f"{total_call_gex:,.0f}",
+        'Total Put GEX': f"{total_put_gex:,.0f}",
+        'Net GEX': f"{net_gex:,.0f}",
+        'Gamma Flip': gamma_levels.get('gamma_flip', 'N/A'),
+        'Support Level': gamma_levels.get('support', 'N/A'),
+        'Resistance Level': gamma_levels.get('resistance', 'N/A'),
+        'Market Regime': 'Positive Gamma' if net_gex > 0 else 'Negative Gamma'
+    }
