@@ -1,109 +1,105 @@
-# modules/data_fetcher.py
+# modules/utils.py
 
-import requests
-import pandas as pd
-from datetime import datetime
-from typing import Dict, Optional
+from datetime import datetime, timedelta
+import calendar
 
-class NSEDataFetcher:
-    """Fetch data from NSE India"""
+class IndianExpiryCalculator:
+    """
+    Calculate expiry dates for Indian indices
+    """
     
-    BASE_URL = "https://www.nseindia.com"
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
+    # Expiry schedule
+    EXPIRY_SCHEDULE = {
+        'NIFTY': {
+            'weekly_expiry': 'Thursday',
+            'monthly_expiry': 'Last Thursday',
+        },
+        'BANKNIFTY': {
+            'weekly_expiry': 'Wednesday',
+            'monthly_expiry': 'Last Wednesday',
+        }
     }
     
     @staticmethod
-    def get_option_chain(symbol: str) -> Optional[Dict]:
-        """Fetch option chain data for given symbol"""
-        try:
-            url = f"{NSEDataFetcher.BASE_URL}/api/option-chain-indices?symbol={symbol}"
-            response = requests.get(url, headers=NSEDataFetcher.HEADERS, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"Error fetching {symbol} data: {e}")
-            return None
+    def get_next_expiry_date(symbol='NIFTY', expiry_type='weekly', reference_date=None):
+        """
+        Get next expiry date for Indian indices
+        """
+        if reference_date is None:
+            reference_date = datetime.now()
+        
+        schedule = IndianExpiryCalculator.EXPIRY_SCHEDULE[symbol]
+        
+        if expiry_type == 'weekly':
+            return IndianExpiryCalculator._get_next_weekly_expiry(
+                reference_date, schedule['weekly_expiry']
+            )
+        else:  # monthly
+            return IndianExpiryCalculator._get_next_monthly_expiry(
+                reference_date, schedule['weekly_expiry']
+            )
     
     @staticmethod
-    def parse_option_chain(data: Dict, symbol: str) -> pd.DataFrame:
-        """Parse NSE option chain data into structured DataFrame"""
-        records = []
+    def _get_next_weekly_expiry(reference_date, expiry_day_name):
+        """
+        Get next weekly expiry date
+        """
+        day_map = {
+            'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 
+            'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6
+        }
         
-        if not data or 'records' not in data:
-            return pd.DataFrame()
+        target_day = day_map[expiry_day_name]
+        current_day = reference_date.weekday()
         
-        spot_price = data['records']['underlyingValue']
-        timestamp = data['records']['timestamp']
+        days_ahead = target_day - current_day
+        if days_ahead < 0:  # If already past this week's expiry
+            days_ahead += 7
         
-        for record in data['records']['data']:
-            # Process Call options
-            if 'CE' in record:
-                ce = record['CE']
-                records.append({
-                    'symbol': symbol,
-                    'strike': record['strikePrice'],
-                    'option_type': 'CE',
-                    'open_interest': ce['openInterest'],
-                    'change_in_oi': ce['changeinOpenInterest'],
-                    'volume': ce['totalTradedVolume'],
-                    'iv': ce['impliedVolatility'] / 100 if ce['impliedVolatility'] else 0,
-                    'last_price': ce['lastPrice'],
-                    'bid_price': ce['bidprice'],
-                    'ask_price': ce['askPrice'],
-                    'spot_price': spot_price,
-                    'timestamp': timestamp
-                })
-            
-            # Process Put options
-            if 'PE' in record:
-                pe = record['PE']
-                records.append({
-                    'symbol': symbol,
-                    'strike': record['strikePrice'],
-                    'option_type': 'PE',
-                    'open_interest': pe['openInterest'],
-                    'change_in_oi': pe['changeinOpenInterest'],
-                    'volume': pe['totalTradedVolume'],
-                    'iv': pe['impliedVolatility'] / 100 if pe['impliedVolatility'] else 0,
-                    'last_price': pe['lastPrice'],
-                    'bid_price': pe['bidprice'],
-                    'ask_price': pe['askPrice'],
-                    'spot_price': spot_price,
-                    'timestamp': timestamp
-                })
+        expiry_date = reference_date + timedelta(days=days_ahead)
         
-        return pd.DataFrame(records)
-
-class MarketData:
-    """Market data utilities"""
+        # If the market is closed on expiry day, adjust? (Not handling holidays here)
+        return expiry_date
     
     @staticmethod
-    def get_spot_price(symbol: str) -> float:
-        """Get current spot price - for demo, we'll use static. In production, use API."""
-        if symbol == "NIFTY":
-            return 22150.75
-        elif symbol == "BANKNIFTY":
-            return 48025.40
-        return 0.0
-    
-    @staticmethod
-    def get_vix() -> float:
-        """Get India VIX"""
-        return 14.25
-    
-    @staticmethod
-    def get_market_status() -> str:
-        """Get current market status"""
-        current_time = datetime.now().time()
-        market_open = datetime.strptime("09:15", "%H:%M").time()
-        market_close = datetime.strptime("15:30", "%H:%M").time()
+    def _get_next_monthly_expiry(reference_date, weekly_expiry_day):
+        """
+        Get next monthly expiry (last weekly expiry of the month)
+        """
+        year = reference_date.year
+        month = reference_date.month
         
-        if market_open <= current_time <= market_close:
-            return "Open"
-        else:
-            return "Closed"
+        last_expiry = IndianExpiryCalculator._get_last_weekday_of_month(
+            year, month, weekly_expiry_day
+        )
+        
+        if reference_date > last_expiry:
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+            last_expiry = IndianExpiryCalculator._get_last_weekday_of_month(
+                year, month, weekly_expiry_day
+            )
+        
+        return last_expiry
+    
+    @staticmethod
+    def _get_last_weekday_of_month(year, month, weekday_name):
+        """
+        Get last specific weekday of the month
+        """
+        day_map = {
+            'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 
+            'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6
+        }
+        target_weekday = day_map[weekday_name]
+        
+        last_day = calendar.monthrange(year, month)[1]
+        
+        for day in range(last_day, 0, -1):
+            date_obj = datetime(year, month, day)
+            if date_obj.weekday() == target_weekday:
+                return date_obj
+        
+        return None
