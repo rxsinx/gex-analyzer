@@ -2,7 +2,7 @@
 GEX Analyzer Modules
 """
 
-from .data_fetcher import fetch_option_chain, generate_sample_data
+from .data_fetcher import fetch_option_chain, generate_sample_data, get_live_spot_price
 from .gex_calculator import calculate_gex, calculate_dex, find_gamma_levels
 from .visualizations import (
     plot_gex_profile, 
@@ -22,6 +22,7 @@ from .utils import (
 __all__ = [
     'fetch_option_chain',
     'generate_sample_data',
+    'get_live_spot_price',
     'calculate_gex',
     'calculate_dex',
     'find_gamma_levels',
