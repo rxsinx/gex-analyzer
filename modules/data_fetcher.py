@@ -31,6 +31,43 @@ class NSEDataFetcher:
         except Exception as e:
             print(f"Error getting cookies: {e}")
     
+    def get_live_spot_price(self, symbol='NIFTY'):
+        """
+        Get live spot price from NSE
+        
+        Args:
+            symbol (str): Index symbol (NIFTY or BANKNIFTY)
+        
+        Returns:
+            float: Current spot price
+        """
+        self._get_cookies()
+        
+        try:
+            if symbol == 'NIFTY':
+                url = f"{self.base_url}/api/allIndices"
+                response = self.session.get(url, timeout=10)
+                data = response.json()
+                
+                for item in data['data']:
+                    if item['index'] == 'NIFTY 50':
+                        return float(item['last'])
+                        
+            elif symbol == 'BANKNIFTY':
+                url = f"{self.base_url}/api/allIndices"
+                response = self.session.get(url, timeout=10)
+                data = response.json()
+                
+                for item in data['data']:
+                    if item['index'] == 'NIFTY BANK':
+                        return float(item['last'])
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error fetching spot price: {e}")
+            return None
+    
     def fetch_option_chain(self, symbol='NIFTY', expiry_date=None):
         """
         Fetch option chain data from NSE
@@ -124,57 +161,109 @@ def fetch_option_chain(symbol='NIFTY', expiry_date=None):
         tuple: (DataFrame, spot_price)
     """
     fetcher = NSEDataFetcher()
-    return fetcher.fetch_option_chain(symbol, expiry_date)
+    
+    # Try to fetch live data
+    df, spot = fetcher.fetch_option_chain(symbol, expiry_date)
+    
+    # If that fails, try to get at least the spot price
+    if spot is None:
+        spot = fetcher.get_live_spot_price(symbol)
+    
+    # If everything fails, use fallback
+    if spot is None:
+        spot = 23500 if symbol == 'NIFTY' else 48000
+    
+    return df, spot
 
 
-def generate_sample_data(symbol='NIFTY', spot_price=21500):
+def get_live_spot_price(symbol='NIFTY'):
     """
-    Generate sample option chain data for testing
+    Get current live spot price
     
     Args:
         symbol (str): Index symbol
-        spot_price (float): Current spot price
+    
+    Returns:
+        float: Current spot price
+    """
+    fetcher = NSEDataFetcher()
+    spot = fetcher.get_live_spot_price(symbol)
+    
+    # Fallback to realistic current values
+    if spot is None:
+        spot = 23500 if symbol == 'NIFTY' else 48000
+    
+    return spot
+
+
+def generate_sample_data(symbol='NIFTY', spot_price=None):
+    """
+    Generate sample option chain data for testing with realistic current prices
+    
+    Args:
+        symbol (str): Index symbol
+        spot_price (float): Current spot price (if None, fetches live)
     
     Returns:
         tuple: (DataFrame, spot_price)
     """
     import numpy as np
     
+    # Try to get live spot price first
+    if spot_price is None:
+        fetcher = NSEDataFetcher()
+        spot_price = fetcher.get_live_spot_price(symbol)
+        
+        # If that fails, use realistic fallback
+        if spot_price is None:
+            spot_price = 23500 if symbol == 'NIFTY' else 48000
+    
     # Generate strikes around spot
-    strikes = np.arange(spot_price - 1000, spot_price + 1000, 50)
+    strike_interval = 50 if symbol == 'NIFTY' else 100
+    num_strikes = 40
+    
+    # Center strikes around current spot
+    start_strike = int((spot_price - (num_strikes/2 * strike_interval)) / strike_interval) * strike_interval
+    strikes = np.arange(start_strike, start_strike + (num_strikes * strike_interval), strike_interval)
     
     options_data = []
     
     for strike in strikes:
         # Generate realistic OI based on distance from ATM
         distance = abs(strike - spot_price)
-        base_oi = max(100000 - distance * 50, 10000)
+        base_oi = max(100000 - distance * 30, 5000)
         
         # Calls
+        call_oi = int(base_oi * np.random.uniform(0.8, 1.2))
+        call_ltp = max(spot_price - strike, 0) + np.random.uniform(5, 50) if spot_price > strike else np.random.uniform(0.5, 10)
+        
         options_data.append({
             'strike': strike,
-            'expiry': '25-JAN-2024',
+            'expiry': '30-JAN-2026',
             'type': 'CE',
-            'oi': int(base_oi * np.random.uniform(0.8, 1.2)),
+            'oi': call_oi,
             'oi_change': int(np.random.uniform(-5000, 5000)),
             'volume': int(np.random.uniform(1000, 50000)),
             'iv': np.random.uniform(12, 18),
-            'ltp': max(spot_price - strike + np.random.uniform(-20, 20), 0.05),
+            'ltp': call_ltp,
             'change': np.random.uniform(-10, 10),
             'bid_qty': int(np.random.uniform(50, 500)),
             'ask_qty': int(np.random.uniform(50, 500)),
         })
         
         # Puts
+        put_oi = int(base_oi * np.random.uniform(0.8, 1.2))
+        put_ltp = max(strike - spot_price, 0) + np.random.uniform(5, 50) if strike > spot_price else np.random.uniform(0.5, 10)
+        
         options_data.append({
             'strike': strike,
-            'expiry': '25-JAN-2024',
+            'expiry': '30-JAN-2026',
             'type': 'PE',
-            'oi': int(base_oi * np.random.uniform(0.8, 1.2)),
+            'oi': put_oi,
             'oi_change': int(np.random.uniform(-5000, 5000)),
             'volume': int(np.random.uniform(1000, 50000)),
             'iv': np.random.uniform(12, 18),
-            'ltp': max(strike - spot_price + np.random.uniform(-20, 20), 0.05),
+            'ltp': put_ltp,
             'change': np.random.uniform(-10, 10),
             'bid_qty': int(np.random.uniform(50, 500)),
             'ask_qty': int(np.random.uniform(50, 500)),
