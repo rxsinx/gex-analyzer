@@ -114,7 +114,6 @@ with st.sidebar:
                     df, spot = fetch_option_chain(symbol, expiry_date)
                 else:
                     # Generate sample data
-                    base_spot = 21500 if symbol == "NIFTY" else 45000
                     df, spot = generate_sample_data(symbol, base_spot)
                 
                 if df is not None and not df.empty:
