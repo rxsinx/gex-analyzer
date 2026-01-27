@@ -397,13 +397,13 @@ if st.session_state.data_loaded:
         st.warning("⚠️ **Disclaimer**: For educational purposes only. Not financial advice.")
 
 else:
-    # Welcome screen
+    # Welcome screen with live prices
     st.info("👈 Configure settings in the sidebar and click 'Fetch Data' to begin analysis")
     
     st.markdown("""
     ### Welcome to GEX Analyzer! 📊
     
-    This tool helps you analyze **Gamma Exposure (GEX)** in NSE options with **LIVE data** from NSE India.
+    This tool analyzes **Gamma Exposure (GEX)** in NSE options with **LIVE data** using nselib.
     
     **Features:**
     - 🔴 **Live Spot Prices** from NSE (NIFTY & BANKNIFTY)
@@ -417,53 +417,70 @@ else:
     **Get Started:**
     1. Select an index (NIFTY or BANKNIFTY)
     2. Choose expiry type (Weekly or Monthly)
-    3. Select data source:
-       - **Live (NSE)**: Attempts to fetch real option chain data
-       - **Sample Data**: Uses simulated data with live spot prices
+    3. Select data source
     4. Click "Fetch Data"
-        """)
-
-# Footer
-st.markdown("---")
-
-st.subheader("📈 Current Market Levels")
+    """)
     
-    # Fetch and display live prices
+    st.markdown("---")
+    
+    # Fetch and display live market data
+    st.subheader("📈 Current Market Levels")
+    
     col1, col2 = st.columns(2)
     
     with col1:
         with st.spinner("Fetching NIFTY..."):
             try:
-                nifty_live = get_live_spot_price('NIFTY')
-                if nifty_live:
-                    st.metric("NIFTY 50 (Live)", f"₹{nifty_live:,.2f}", delta=None)
+                nifty_quote = get_index_quote('NIFTY')
+                if nifty_quote:
+                    change_color = "🟢" if nifty_quote['change'] >= 0 else "🔴"
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                padding: 1.5rem; 
+                                border-radius: 10px; 
+                                color: white;'>
+                        <h4 style='margin: 0; color: white;'>NIFTY 50</h4>
+                        <h2 style='margin: 0.5rem 0; color: white;'>₹{nifty_quote['last']:,.2f}</h2>
+                        <p style='margin: 0;'>{change_color} {nifty_quote['change']:+.2f}%</p>
+                        <hr style='margin: 0.5rem 0; border-color: rgba(255,255,255,0.3);'>
+                        <small>High: ₹{nifty_quote['high']:,.2f} | Low: ₹{nifty_quote['low']:,.2f}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.metric("NIFTY 50", "₹23,500 (est.)", delta=None)
-            except:
-                st.metric("NIFTY 50", "₹23,500 (est.)", delta=None)
+                    st.error("Unable to fetch NIFTY data")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
     
     with col2:
         with st.spinner("Fetching BANKNIFTY..."):
             try:
-                banknifty_live = get_live_spot_price('BANKNIFTY')
-                if banknifty_live:
-                    st.metric("BANK NIFTY (Live)", f"₹{banknifty_live:,.2f}", delta=None)
+                banknifty_quote = get_index_quote('BANKNIFTY')
+                if banknifty_quote:
+                    change_color = "🟢" if banknifty_quote['change'] >= 0 else "🔴"
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                                padding: 1.5rem; 
+                                border-radius: 10px; 
+                                color: white;'>
+                        <h4 style='margin: 0; color: white;'>BANK NIFTY</h4>
+                        <h2 style='margin: 0.5rem 0; color: white;'>₹{banknifty_quote['last']:,.2f}</h2>
+                        <p style='margin: 0;'>{change_color} {banknifty_quote['change']:+.2f}%</p>
+                        <hr style='margin: 0.5rem 0; border-color: rgba(255,255,255,0.3);'>
+                        <small>High: ₹{banknifty_quote['high']:,.2f} | Low: ₹{banknifty_quote['low']:,.2f}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.metric("BANK NIFTY", "₹48,000 (est.)", delta=None)
-            except:
-                st.metric("BANK NIFTY", "₹48,000 (est.)", delta=None)
+                    st.error("Unable to fetch BANKNIFTY data")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
     
-    st.caption(f"🕐 Last checked: {datetime.now().strftime('%H:%M:%S')} | Data from NSE India")
+    # Market status
+    try:
+        market_status = get_market_status()
+        status_color = "🟢" if market_status['market_state'] == 'Market Open' else "🔴"
+        st.caption(f"{status_color} Market Status: {market_status['market_state']} | Updated: {market_status['timestamp']}")
+    except:
+        st.caption("Market status: Unknown")
     
     st.markdown("---")
-    st.info("💡 **Tip**: These are live prices from NSE. Click 'Fetch Data' to start your analysis!")
-
-
-st.markdown(
-    """
-    <div style='text-align: center; color: #666; padding: 1rem;'>
-        <p>GEX Analyzer v1.0 | Built with Streamlit | Live Data from NSE India</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    st.info("💡 **Tip**: These are live prices from NSE via nselib. Click 'Fetch Data' to start your analysis!")
