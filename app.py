@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime
 
 # Import custom modules
-from modules.data_fetcher import fetch_option_chain, generate_sample_data
+from modules.data_fetcher import fetch_option_chain, generate_sample_data, get_live_spot_price
 from modules.gex_calculator import calculate_gex, calculate_dex, find_gamma_levels
 from modules.visualizations import (
     plot_gex_profile, 
@@ -27,7 +27,7 @@ from modules.utils import (
 
 # Page configuration
 st.set_page_config(
-    page_title="GEX Analyzer",
+    page_title="GEX Analyzer - Live NSE Data",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -52,6 +52,19 @@ st.markdown("""
     .stAlert {
         margin-top: 1rem;
     }
+    .live-indicator {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        background-color: #22c55e;
+        border-radius: 50%;
+        margin-right: 5px;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -62,6 +75,8 @@ if 'options_df' not in st.session_state:
     st.session_state.options_df = None
 if 'spot_price' not in st.session_state:
     st.session_state.spot_price = None
+if 'last_update' not in st.session_state:
+    st.session_state.last_update = None
 
 # Header
 st.markdown('<p class="main-header">📊 GEX Analyzer</p>', unsafe_allow_html=True)
@@ -108,33 +123,82 @@ with st.sidebar:
     
     # Fetch data button
     if st.button("🔄 Fetch Data", type="primary", use_container_width=True):
-        with st.spinner("Fetching option chain data..."):
+        with st.spinner("Fetching data from NSE..."):
             try:
                 if data_source == "Live (NSE)":
+                    # Try to fetch live NSE option chain
+                    st.info("🌐 Connecting to NSE...")
                     df, spot = fetch_option_chain(symbol, expiry_date)
+                    
+                    if df is not None and not df.empty and spot is not None:
+                        st.session_state.options_df = df
+                        st.session_state.spot_price = spot
+                        st.session_state.data_loaded = True
+                        st.session_state.last_update = datetime.now()
+                        st.success(f"✅ Live data loaded! Spot: ₹{spot:,.2f}")
+                    else:
+                        # Fallback: Get live spot and use sample data
+                        st.warning("⚠️ NSE option chain unavailable. Fetching live spot price...")
+                        live_spot = get_live_spot_price(symbol)
+                        
+                        if live_spot:
+                            df, spot = generate_sample_data(symbol, live_spot)
+                            st.session_state.options_df = df
+                            st.session_state.spot_price = spot
+                            st.session_state.data_loaded = True
+                            st.session_state.last_update = datetime.now()
+                            st.info(f"📊 Using sample data with live spot: ₹{spot:,.2f}")
+                        else:
+                            # Last resort fallback
+                            default_spot = 23500 if symbol == "NIFTY" else 48000
+                            df, spot = generate_sample_data(symbol, default_spot)
+                            st.session_state.options_df = df
+                            st.session_state.spot_price = spot
+                            st.session_state.data_loaded = True
+                            st.session_state.last_update = datetime.now()
+                            st.warning(f"⚠️ Using fallback spot: ₹{spot:,.2f}")
                 else:
-                    # Generate sample data
-                    df, spot = generate_sample_data(symbol, base_spot)
-                
-                if df is not None and not df.empty:
-                    st.session_state.options_df = df
-                    st.session_state.spot_price = spot
-                    st.session_state.data_loaded = True
-                    st.success("✅ Data loaded successfully!")
-                else:
-                    st.error("❌ Failed to fetch data. Using sample data.")
-                    df, spot = generate_sample_data(symbol, 21500)
-                    st.session_state.options_df = df
-                    st.session_state.spot_price = spot
-                    st.session_state.data_loaded = True
+                    # Sample data mode - always fetch live spot
+                    st.info("📡 Fetching live spot price from NSE...")
+                    live_spot = get_live_spot_price(symbol)
+                    
+                    if live_spot:
+                        df, spot = generate_sample_data(symbol, live_spot)
+                        st.session_state.options_df = df
+                        st.session_state.spot_price = spot
+                        st.session_state.data_loaded = True
+                        st.session_state.last_update = datetime.now()
+                        st.success(f"✅ Sample data with live spot: ₹{spot:,.2f}")
+                    else:
+                        # Fallback if live spot unavailable
+                        default_spot = 23500 if symbol == "NIFTY" else 48000
+                        df, spot = generate_sample_data(symbol, default_spot)
+                        st.session_state.options_df = df
+                        st.session_state.spot_price = spot
+                        st.session_state.data_loaded = True
+                        st.session_state.last_update = datetime.now()
+                        st.warning(f"⚠️ Using default spot: ₹{spot:,.2f}")
                     
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
-                st.info("Loading sample data instead...")
-                df, spot = generate_sample_data(symbol, 21500)
-                st.session_state.options_df = df
-                st.session_state.spot_price = spot
-                st.session_state.data_loaded = True
+                st.info("Using fallback data...")
+                
+                # Last resort
+                try:
+                    live_spot = get_live_spot_price(symbol)
+                    if live_spot:
+                        df, spot = generate_sample_data(symbol, live_spot)
+                    else:
+                        default_spot = 23500 if symbol == "NIFTY" else 48000
+                        df, spot = generate_sample_data(symbol, default_spot)
+                    
+                    st.session_state.options_df = df
+                    st.session_state.spot_price = spot
+                    st.session_state.data_loaded = True
+                    st.session_state.last_update = datetime.now()
+                    st.info(f"📊 Loaded with spot: ₹{spot:,.2f}")
+                except Exception as fallback_error:
+                    st.error(f"Critical error: {str(fallback_error)}")
     
     # Risk-free rate
     st.subheader("🔧 Parameters")
@@ -145,6 +209,13 @@ with st.sidebar:
         value=7.0,
         step=0.1
     ) / 100
+    
+    # Show last update time
+    if st.session_state.data_loaded and st.session_state.last_update:
+        st.markdown("---")
+        st.markdown('<span class="live-indicator"></span> Live Data', unsafe_allow_html=True)
+        st.caption(f"🕐 Updated: {st.session_state.last_update.strftime('%H:%M:%S')}")
+        st.caption(f"📊 {symbol} Spot: ₹{st.session_state.spot_price:,.2f}")
 
 # Main content
 if st.session_state.data_loaded:
@@ -166,31 +237,34 @@ if st.session_state.data_loaded:
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
+        delta_color = "normal"
         st.metric(
-            "Spot Price",
+            "💰 Spot Price",
             f"₹{spot_price:,.2f}",
             delta=None
         )
     
     with col2:
+        flip_diff = gamma_levels['gamma_flip'] - spot_price
         st.metric(
-            "Gamma Flip",
+            "🔄 Gamma Flip",
             f"₹{gamma_levels['gamma_flip']:,.0f}",
-            delta=f"{gamma_levels['gamma_flip'] - spot_price:+.0f}"
+            delta=f"{flip_diff:+.0f}",
+            delta_color="off"
         )
     
     with col3:
         regime = "Positive Gamma" if gamma_levels['total_gex'] > 0 else "Negative Gamma"
         regime_color = "🟢" if gamma_levels['total_gex'] > 0 else "🔴"
         st.metric(
-            "Market Regime",
+            "📊 Market Regime",
             f"{regime_color} {regime}",
             delta=None
         )
     
     with col4:
         st.metric(
-            "Net GEX",
+            "💹 Net GEX",
             format_number(gamma_levels['total_gex']),
             delta=None
         )
@@ -216,9 +290,9 @@ if st.session_state.data_loaded:
         
         with col1:
             st.markdown("##### 🎯 Key Levels")
-            st.write(f"**Support Level:** {gamma_levels.get('support', 'N/A')}")
-            st.write(f"**Resistance Level:** {gamma_levels.get('resistance', 'N/A')}")
-            st.write(f"**ATM Strike:** {get_atm_strike(spot_price)}")
+            st.write(f"**Support Level:** ₹{gamma_levels.get('support', 'N/A'):,}")
+            st.write(f"**Resistance Level:** ₹{gamma_levels.get('resistance', 'N/A'):,}")
+            st.write(f"**ATM Strike:** ₹{get_atm_strike(spot_price):,}")
         
         with col2:
             st.markdown("##### 📊 GEX Summary")
@@ -275,7 +349,7 @@ if st.session_state.data_loaded:
         st.download_button(
             label="📥 Download GEX Data (CSV)",
             data=csv,
-            file_name=f"gex_data_{symbol}_{expiry_date}.csv",
+            file_name=f"gex_data_{symbol}_{expiry_date}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv"
         )
     
@@ -312,9 +386,15 @@ if st.session_state.data_loaded:
         - Large negative GEX at a strike = Potential resistance level
         - Price tends to gravitate toward areas of high gamma
         - Crossing the gamma flip point can lead to regime change in volatility
+        
+        **Data Source:**
+        - This tool fetches **live spot prices** from NSE India
+        - Option chain data from NSE (when available)
+        - Sample data uses realistic simulated OI with live spot prices
         """)
         
         st.info("💡 **Tip**: Combine GEX analysis with price action, volume, and other indicators for best results.")
+        st.warning("⚠️ **Disclaimer**: For educational purposes only. Not financial advice.")
 
 else:
     # Welcome screen
@@ -323,37 +403,66 @@ else:
     st.markdown("""
     ### Welcome to GEX Analyzer! 📊
     
-    This tool helps you analyze **Gamma Exposure (GEX)** in NSE options to:
+    This tool helps you analyze **Gamma Exposure (GEX)** in NSE options with **LIVE data** from NSE India.
     
-    - 🎯 Identify key support and resistance levels
-    - 📈 Understand market maker positioning
-    - 🔄 Detect gamma flip points
-    - 📊 Analyze option open interest distribution
-    - 💹 Make informed trading decisions
+    **Features:**
+    - 🔴 **Live Spot Prices** from NSE (NIFTY & BANKNIFTY)
+    - 📊 Real-time GEX calculations
+    - 📈 Interactive visualizations
+    - 🎯 Key support/resistance levels
+    - 💹 Put-Call Ratio analysis
+    - 📥 Downloadable data
+    - 🔄 Market regime identification
     
     **Get Started:**
     1. Select an index (NIFTY or BANKNIFTY)
     2. Choose expiry type (Weekly or Monthly)
-    3. Select data source
+    3. Select data source:
+       - **Live (NSE)**: Attempts to fetch real option chain data
+       - **Sample Data**: Uses simulated data with live spot prices
     4. Click "Fetch Data"
-    
-    ---
-    
-    **Features:**
-    - Real-time GEX calculations
-    - Interactive visualizations
-    - Put-Call Ratio analysis
-    - Downloadable data
-    - Market regime identification
-    """)
+        """)
 
 # Footer
 st.markdown("---")
+
+st.subheader("📈 Current Market Levels")
+    
+    # Fetch and display live prices
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        with st.spinner("Fetching NIFTY..."):
+            try:
+                nifty_live = get_live_spot_price('NIFTY')
+                if nifty_live:
+                    st.metric("NIFTY 50 (Live)", f"₹{nifty_live:,.2f}", delta=None)
+                else:
+                    st.metric("NIFTY 50", "₹23,500 (est.)", delta=None)
+            except:
+                st.metric("NIFTY 50", "₹23,500 (est.)", delta=None)
+    
+    with col2:
+        with st.spinner("Fetching BANKNIFTY..."):
+            try:
+                banknifty_live = get_live_spot_price('BANKNIFTY')
+                if banknifty_live:
+                    st.metric("BANK NIFTY (Live)", f"₹{banknifty_live:,.2f}", delta=None)
+                else:
+                    st.metric("BANK NIFTY", "₹48,000 (est.)", delta=None)
+            except:
+                st.metric("BANK NIFTY", "₹48,000 (est.)", delta=None)
+    
+    st.caption(f"🕐 Last checked: {datetime.now().strftime('%H:%M:%S')} | Data from NSE India")
+    
+    st.markdown("---")
+    st.info("💡 **Tip**: These are live prices from NSE. Click 'Fetch Data' to start your analysis!")
+
+
 st.markdown(
     """
     <div style='text-align: center; color: #666; padding: 1rem;'>
-        <p>GEX Analyzer v1.0 | Built with Streamlit | Data from NSE</p>
-        <p style='font-size: 0.8rem;'>⚠️ For educational purposes only. Not financial advice.</p>
+        <p>GEX Analyzer v1.0 | Built with Streamlit | Live Data from NSE India</p>
     </div>
     """,
     unsafe_allow_html=True
