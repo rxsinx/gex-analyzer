@@ -4,4 +4,4 @@ numpy>=1.24.0
 plotly>=5.17.0
 requests>=2.31.0
 scipy>=1.11.0
-nselib>=1.1.0
+nselib>=2.4.2
