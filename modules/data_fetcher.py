@@ -1,128 +1,126 @@
 """
-Data fetching module for NSE options data using nselib
+Multi-source data fetching module
+Supports: NSE (nselib), Kite Connect, and Sample Data
 """
 
 import pandas as pd
 from datetime import datetime
-import time
+import numpy as np
 from nselib import capital_market
+import streamlit as st
 
 
-def get_live_spot_price(symbol='NIFTY'):
+def get_live_spot_price(symbol='NIFTY', source='nselib', kite_manager=None):
     """
-    Get live spot price using nselib
+    Get live spot price from multiple sources
     
     Args:
-        symbol (str): Index symbol (NIFTY or BANKNIFTY)
+        symbol (str): Index symbol
+        source (str): Data source ('nselib' or 'kite')
+        kite_manager: KiteManager instance
     
     Returns:
         float: Current spot price
     """
     try:
-        if symbol == 'NIFTY':
-            # Get NIFTY 50 data
+        if source == 'kite' and kite_manager:
+            return kite_manager.get_spot_price(symbol)
+        else:
+            # Use nselib
             data = capital_market.market_watch_all_indices()
+            index_name = 'NIFTY 50' if symbol == 'NIFTY' else 'NIFTY BANK'
+            
             for item in data['data']:
-                if item['index'] == 'NIFTY 50':
-                    return float(item['last'])
-        
-        elif symbol == 'BANKNIFTY':
-            # Get BANK NIFTY data
-            data = capital_market.market_watch_all_indices()
-            for item in data['data']:
-                if item['index'] == 'NIFTY BANK':
+                if item['index'] == index_name:
                     return float(item['last'])
         
         return None
-    
     except Exception as e:
         print(f"Error fetching spot price: {e}")
         return None
 
 
-def fetch_option_chain(symbol='NIFTY', expiry_date=None):
+def fetch_option_chain(symbol='NIFTY', expiry_date=None, source='nselib', kite_manager=None):
     """
-    Fetch option chain data using nselib
+    Fetch option chain from multiple sources
     
     Args:
-        symbol (str): Index symbol (NIFTY or BANKNIFTY)
-        expiry_date (str): Expiry date in DD-MMM-YYYY format
+        symbol (str): Index symbol
+        expiry_date (str): Expiry date
+        source (str): Data source
+        kite_manager: KiteManager instance
     
     Returns:
-        tuple: (DataFrame with options data, spot price)
+        tuple: (DataFrame, spot_price)
     """
     try:
-        # Fetch option chain
-        if symbol == 'NIFTY':
-            oc_data = capital_market.nifty_option_chain()
-        elif symbol == 'BANKNIFTY':
-            oc_data = capital_market.bank_nifty_option_chain()
+        if source == 'kite' and kite_manager:
+            return kite_manager.get_option_chain(symbol, expiry_date)
         else:
-            return None, None
-        
-        # Extract spot price
-        spot_price = oc_data['records']['underlyingValue']
-        
-        # Parse option chain data
-        options_data = []
-        
-        for item in oc_data['records']['data']:
-            strike = item['strikePrice']
-            expiry = item['expiryDate']
+            # Use nselib
+            if symbol == 'NIFTY':
+                oc_data = capital_market.nifty_option_chain()
+            elif symbol == 'BANKNIFTY':
+                oc_data = capital_market.bank_nifty_option_chain()
+            elif symbol == 'FINNIFTY':
+                oc_data = capital_market.finnifty_option_chain()
+            else:
+                return None, None
             
-            # Filter by expiry if specified
-            if expiry_date and expiry != expiry_date:
-                continue
+            spot_price = oc_data['records']['underlyingValue']
+            options_data = []
             
-            # Call data
-            if 'CE' in item:
-                ce = item['CE']
-                options_data.append({
-                    'strike': strike,
-                    'expiry': expiry,
-                    'type': 'CE',
-                    'oi': ce.get('openInterest', 0),
-                    'oi_change': ce.get('changeinOpenInterest', 0),
-                    'volume': ce.get('totalTradedVolume', 0),
-                    'iv': ce.get('impliedVolatility', 0),
-                    'ltp': ce.get('lastPrice', 0),
-                    'change': ce.get('change', 0),
-                    'bid_qty': ce.get('bidQty', 0),
-                    'ask_qty': ce.get('askQty', 0),
-                })
+            for item in oc_data['records']['data']:
+                strike = item['strikePrice']
+                expiry = item['expiryDate']
+                
+                if expiry_date and expiry != expiry_date:
+                    continue
+                
+                # Call data
+                if 'CE' in item:
+                    ce = item['CE']
+                    options_data.append({
+                        'strike': strike,
+                        'expiry': expiry,
+                        'type': 'CE',
+                        'oi': ce.get('openInterest', 0),
+                        'oi_change': ce.get('changeinOpenInterest', 0),
+                        'volume': ce.get('totalTradedVolume', 0),
+                        'iv': ce.get('impliedVolatility', 0),
+                        'ltp': ce.get('lastPrice', 0),
+                        'change': ce.get('change', 0),
+                        'bid_qty': ce.get('bidQty', 0),
+                        'ask_qty': ce.get('askQty', 0),
+                    })
+                
+                # Put data
+                if 'PE' in item:
+                    pe = item['PE']
+                    options_data.append({
+                        'strike': strike,
+                        'expiry': expiry,
+                        'type': 'PE',
+                        'oi': pe.get('openInterest', 0),
+                        'oi_change': pe.get('changeinOpenInterest', 0),
+                        'volume': pe.get('totalTradedVolume', 0),
+                        'iv': pe.get('impliedVolatility', 0),
+                        'ltp': pe.get('lastPrice', 0),
+                        'change': pe.get('change', 0),
+                        'bid_qty': pe.get('bidQty', 0),
+                        'ask_qty': pe.get('askQty', 0),
+                    })
             
-            # Put data
-            if 'PE' in item:
-                pe = item['PE']
-                options_data.append({
-                    'strike': strike,
-                    'expiry': expiry,
-                    'type': 'PE',
-                    'oi': pe.get('openInterest', 0),
-                    'oi_change': pe.get('changeinOpenInterest', 0),
-                    'volume': pe.get('totalTradedVolume', 0),
-                    'iv': pe.get('impliedVolatility', 0),
-                    'ltp': pe.get('lastPrice', 0),
-                    'change': pe.get('change', 0),
-                    'bid_qty': pe.get('bidQty', 0),
-                    'ask_qty': pe.get('askQty', 0),
-                })
-        
-        df = pd.DataFrame(options_data)
-        return df, spot_price
-    
+            df = pd.DataFrame(options_data)
+            return df, spot_price
+            
     except Exception as e:
         print(f"Error fetching option chain: {e}")
         return None, None
 
 
 def get_market_status():
-    """
-    Get current market status
-    
-    Returns:
-        dict: Market status information
-    """
+    """Get current market status"""
     try:
         data = capital_market.market_status()
         return {
@@ -137,29 +135,13 @@ def get_market_status():
 
 
 def get_index_quote(symbol='NIFTY'):
-    """
-    Get detailed index quote
-    
-    Args:
-        symbol (str): Index symbol
-    
-    Returns:
-        dict: Index quote data
-    """
+    """Get detailed index quote"""
     try:
         data = capital_market.market_watch_all_indices()
+        index_name = 'NIFTY 50' if symbol == 'NIFTY' else 'NIFTY BANK'
         
         for item in data['data']:
-            if symbol == 'NIFTY' and item['index'] == 'NIFTY 50':
-                return {
-                    'last': float(item['last']),
-                    'change': float(item.get('percentChange', 0)),
-                    'open': float(item.get('open', 0)),
-                    'high': float(item.get('high', 0)),
-                    'low': float(item.get('low', 0)),
-                    'previous_close': float(item.get('previousClose', 0)),
-                }
-            elif symbol == 'BANKNIFTY' and item['index'] == 'NIFTY BANK':
+            if item['index'] == index_name:
                 return {
                     'last': float(item['last']),
                     'change': float(item.get('percentChange', 0)),
@@ -170,45 +152,25 @@ def get_index_quote(symbol='NIFTY'):
                 }
         
         return None
-    
     except Exception as e:
         print(f"Error fetching index quote: {e}")
         return None
 
 
 def generate_sample_data(symbol='NIFTY', spot_price=None):
-    """
-    Generate sample option chain data with live spot price
-    
-    Args:
-        symbol (str): Index symbol
-        spot_price (float): Current spot price (if None, fetches live)
-    
-    Returns:
-        tuple: (DataFrame, spot_price)
-    """
-    import numpy as np
-    
-    # Try to get live spot price first
+    """Generate sample option chain data"""
     if spot_price is None:
-        spot_price = get_live_spot_price(symbol)
-        
-        # If that fails, use realistic fallback
-        if spot_price is None:
-            spot_price = 23500 if symbol == 'NIFTY' else 48000
+        spot_price = get_live_spot_price(symbol) or (23500 if symbol == 'NIFTY' else 48000)
     
-    # Generate strikes around spot
     strike_interval = 50 if symbol == 'NIFTY' else 100
     num_strikes = 40
     
-    # Center strikes around current spot
     start_strike = int((spot_price - (num_strikes/2 * strike_interval)) / strike_interval) * strike_interval
     strikes = np.arange(start_strike, start_strike + (num_strikes * strike_interval), strike_interval)
     
     options_data = []
     
     for strike in strikes:
-        # Generate realistic OI based on distance from ATM
         distance = abs(strike - spot_price)
         base_oi = max(100000 - distance * 30, 5000)
         
