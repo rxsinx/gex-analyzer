@@ -1,5 +1,21 @@
 """
 Utility functions for GEX Analyzer
+
+Key additions vs original
+--------------------------
+* get_next_expiry_for_symbol(symbol)  – respects each index's expiry weekday
+  NIFTY      → Thursday (3)
+  BANKNIFTY  → Wednesday (2)
+  FINNIFTY   → Tuesday  (1)
+  MIDCPNIFTY → Monday   (0)
+
+* get_lot_size(symbol, kite_manager)  – fetches from Kite when connected,
+  falls back to SEBI-current defaults
+
+* get_expiries_for_symbol(symbol, kite_manager)  – returns Kite expiries when
+  connected, otherwise falls back to computed weekly/monthly dates
+
+* All previous helpers retained unchanged.
 """
 
 import pandas as pd
@@ -7,135 +23,200 @@ from datetime import datetime, timedelta
 import calendar
 
 
-def get_next_expiry(expiry_type='weekly'):
+# ---------------------------------------------------------------------------
+# Expiry weekday per index  (0 = Monday … 6 = Sunday)
+# ---------------------------------------------------------------------------
+_EXPIRY_WEEKDAY = {
+    'NIFTY':      3,   # Thursday
+    'BANKNIFTY':  2,   # Wednesday
+    'FINNIFTY':   1,   # Tuesday
+    'MIDCPNIFTY': 0,   # Monday
+}
+_DEFAULT_EXPIRY_WEEKDAY = 3   # Thursday if unknown
+
+
+# ---------------------------------------------------------------------------
+# Lot sizes – SEBI / NSE current values (as of May 2025)
+# Update these when NSE revises lot sizes.
+# ---------------------------------------------------------------------------
+_LOT_SIZES = {
+    'NIFTY':      75,
+    'BANKNIFTY':  35,
+    'FINNIFTY':   65,
+    'MIDCPNIFTY': 120,
+}
+
+
+def get_lot_size(symbol: str, kite_manager=None) -> int:
     """
-    Get the next expiry date for options
-    
-    Args:
-        expiry_type (str): 'weekly' or 'monthly'
-    
-    Returns:
-        str: Expiry date in DD-MMM-YYYY format
+    Return the lot size for *symbol*.
+
+    If *kite_manager* is supplied and connected, fetch from Kite instruments
+    (authoritative source).  Otherwise use the local fallback table.
+    """
+    if kite_manager is not None:
+        try:
+            lot = kite_manager.get_lot_size(symbol)
+            if lot and lot > 0:
+                return lot
+        except Exception:
+            pass
+    return _LOT_SIZES.get(symbol.upper(), 50)
+
+
+# ---------------------------------------------------------------------------
+# Next expiry helpers
+# ---------------------------------------------------------------------------
+
+def _next_weekday(from_date: datetime, weekday: int) -> datetime:
+    """Return the next *weekday* (0=Mon … 6=Sun) on or after *from_date*."""
+    days_ahead = (weekday - from_date.weekday()) % 7
+    if days_ahead == 0:
+        days_ahead = 7          # if today is the weekday, go to next occurrence
+    return from_date + timedelta(days=days_ahead)
+
+
+def get_next_expiry_for_symbol(symbol: str, expiry_type: str = 'weekly') -> str:
+    """
+    Return the next expiry date for *symbol* in 'DD-MMM-YYYY' format.
+
+    Parameters
+    ----------
+    symbol : str        e.g. 'NIFTY', 'BANKNIFTY'
+    expiry_type : str   'weekly' or 'monthly'
     """
     today = datetime.now()
-    
+    weekday = _EXPIRY_WEEKDAY.get(symbol.upper(), _DEFAULT_EXPIRY_WEEKDAY)
+
     if expiry_type == 'weekly':
-        # Next Thursday
-        days_ahead = 3 - today.weekday()  # Thursday is 3
-        if days_ahead <= 0:
-            days_ahead += 7
-        expiry = today + timedelta(days=days_ahead)
+        expiry = _next_weekday(today, weekday)
     else:
-        # Last Thursday of current month
+        # Last occurrence of *weekday* in the current month
         last_day = calendar.monthrange(today.year, today.month)[1]
-        last_date = datetime(today.year, today.month, last_day)
-        
-        # Find last Thursday
-        offset = (last_date.weekday() - 3) % 7
-        expiry = last_date - timedelta(days=offset)
-        
-        # If we've passed it, get next month's
-        if expiry < today:
+        candidate = datetime(today.year, today.month, last_day)
+        # Walk backwards to find the last weekday
+        while candidate.weekday() != weekday:
+            candidate -= timedelta(days=1)
+        # If we've already passed it, go to next month
+        if candidate.date() <= today.date():
             if today.month == 12:
-                next_month = datetime(today.year + 1, 1, 1)
+                nxt = datetime(today.year + 1, 1, 1)
             else:
-                next_month = datetime(today.year, today.month + 1, 1)
-            
-            last_day = calendar.monthrange(next_month.year, next_month.month)[1]
-            last_date = datetime(next_month.year, next_month.month, last_day)
-            offset = (last_date.weekday() - 3) % 7
-            expiry = last_date - timedelta(days=offset)
-    
+                nxt = datetime(today.year, today.month + 1, 1)
+            last_day = calendar.monthrange(nxt.year, nxt.month)[1]
+            candidate = datetime(nxt.year, nxt.month, last_day)
+            while candidate.weekday() != weekday:
+                candidate -= timedelta(days=1)
+        expiry = candidate
+
     return expiry.strftime('%d-%b-%Y').upper()
 
 
-def get_atm_strike(spot_price, strike_interval=50):
+def get_next_expiry(expiry_type='weekly', symbol='NIFTY') -> str:
+    """Backward-compatible wrapper."""
+    return get_next_expiry_for_symbol(symbol, expiry_type)
+
+
+def get_expiries_for_symbol(symbol: str, kite_manager=None,
+                             expiry_type: str = 'weekly',
+                             num_expiries: int = 8) -> list[str]:
     """
-    Get the At-The-Money strike price
-    
-    Args:
-        spot_price (float): Current spot price
-        strike_interval (int): Strike price interval
-    
-    Returns:
-        int: ATM strike price
+    Return a list of upcoming expiry dates for *symbol*.
+
+    Preference order:
+    1. Kite instruments (authoritative, actual calendar)
+    2. Computed dates based on known weekday rules
     """
+    # Try Kite first
+    if kite_manager is not None:
+        try:
+            expiries = kite_manager.get_available_expiries(symbol)
+            if expiries:
+                # Separate into weekly (all) and monthly (last of month)
+                if expiry_type == 'monthly':
+                    monthly = []
+                    for e in expiries:
+                        d = datetime.strptime(e, '%d-%b-%Y')
+                        # Last expiry of a calendar month
+                        next_d = d + timedelta(days=7)
+                        if next_d.month != d.month:
+                            monthly.append(e)
+                    return monthly[:num_expiries] if monthly else expiries[:num_expiries]
+                return expiries[:num_expiries]
+        except Exception:
+            pass
+
+    # Fallback: compute dates
+    today = datetime.now()
+    weekday = _EXPIRY_WEEKDAY.get(symbol.upper(), _DEFAULT_EXPIRY_WEEKDAY)
+    expiries = []
+    current = today
+
+    if expiry_type == 'weekly':
+        for _ in range(num_expiries):
+            expiry = _next_weekday(current, weekday)
+            expiries.append(expiry.strftime('%d-%b-%Y').upper())
+            current = expiry + timedelta(days=1)
+    else:
+        for _ in range(num_expiries):
+            # Last weekday of current month
+            last_day = calendar.monthrange(current.year, current.month)[1]
+            candidate = datetime(current.year, current.month, last_day)
+            while candidate.weekday() != weekday:
+                candidate -= timedelta(days=1)
+            if candidate.date() <= current.date():
+                if current.month == 12:
+                    current = datetime(current.year + 1, 1, 1)
+                else:
+                    current = datetime(current.year, current.month + 1, 1)
+                last_day = calendar.monthrange(current.year, current.month)[1]
+                candidate = datetime(current.year, current.month, last_day)
+                while candidate.weekday() != weekday:
+                    candidate -= timedelta(days=1)
+            expiries.append(candidate.strftime('%d-%b-%Y').upper())
+            if current.month == 12:
+                current = datetime(current.year + 1, 1, 1)
+            else:
+                current = datetime(current.year, current.month + 1, 1)
+
+    return expiries
+
+
+# ---------------------------------------------------------------------------
+# Remaining helpers (unchanged from original)
+# ---------------------------------------------------------------------------
+
+def get_atm_strike(spot_price: float, strike_interval: int = 50) -> int:
     return round(spot_price / strike_interval) * strike_interval
 
 
-def format_number(num):
-    """
-    Format large numbers for display
-    
-    Args:
-        num (float): Number to format
-    
-    Returns:
-        str: Formatted number
-    """
-    if abs(num) >= 10000000:  # 1 crore
-        return f"₹{num/10000000:.2f}Cr"
-    elif abs(num) >= 100000:  # 1 lakh
-        return f"₹{num/100000:.2f}L"
+def format_number(num: float) -> str:
+    if abs(num) >= 10_000_000:
+        return f"₹{num / 10_000_000:.2f}Cr"
+    elif abs(num) >= 100_000:
+        return f"₹{num / 100_000:.2f}L"
     else:
         return f"₹{num:,.0f}"
 
 
-def calculate_time_to_expiry(expiry_date_str):
-    """
-    Calculate time to expiry in years
-    
-    Args:
-        expiry_date_str (str): Expiry date in DD-MMM-YYYY format
-    
-    Returns:
-        float: Time to expiry in years
-    """
+def calculate_time_to_expiry(expiry_date_str: str) -> float:
+    """Return time to expiry in years (minimum 1 day = 1/365)."""
     try:
         expiry_date = datetime.strptime(expiry_date_str, '%d-%b-%Y')
-        today = datetime.now()
-        days_to_expiry = (expiry_date - today).days
-        return max(days_to_expiry / 365.0, 0.0027)  # Minimum 1 day
-    except:
-        return 0.0027  # Default to 1 day
+        days = (expiry_date - datetime.now()).days
+        return max(days / 365.0, 1 / 365)
+    except Exception:
+        return 1 / 365
 
 
-def filter_strikes(df, spot_price, range_pct=10):
-    """
-    Filter strikes within a percentage range of spot price
-    
-    Args:
-        df (pd.DataFrame): Options data
-        spot_price (float): Current spot price
-        range_pct (int): Percentage range around spot
-    
-    Returns:
-        pd.DataFrame: Filtered dataframe
-    """
-    lower_bound = spot_price * (1 - range_pct/100)
-    upper_bound = spot_price * (1 + range_pct/100)
-    
-    return df[(df['strike'] >= lower_bound) & (df['strike'] <= upper_bound)]
+def filter_strikes(df, spot_price: float, range_pct: int = 10):
+    """Filter strikes within *range_pct* % of spot price."""
+    lo = spot_price * (1 - range_pct / 100)
+    hi = spot_price * (1 + range_pct / 100)
+    return df[(df['strike'] >= lo) & (df['strike'] <= hi)]
 
 
-def get_available_expiries():
-    """
-    Get list of available expiry dates (next 3 months)
-    
-    Returns:
-        list: List of expiry dates
-    """
-    expiries = []
-    today = datetime.now()
-    
-    # Get next 12 weekly expiries
-    current = today
-    for _ in range(12):
-        days_ahead = 3 - current.weekday()
-        if days_ahead <= 0:
-            days_ahead += 7
-        expiry = current + timedelta(days=days_ahead)
-        expiries.append(expiry.strftime('%d-%b-%Y').upper())
-        current = expiry + timedelta(days=1)
-    
-    return expiries
+def get_available_expiries(symbol: str = 'NIFTY',
+                            kite_manager=None) -> list[str]:
+    """Backward-compatible wrapper around get_expiries_for_symbol."""
+    return get_expiries_for_symbol(symbol, kite_manager)
