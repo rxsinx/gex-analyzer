@@ -9,8 +9,8 @@ import pandas as pd
 from datetime import datetime
 import time
 from streamlit_autorefresh import st_autorefresh
-from kite_auth import KiteAuth
-from config import INSTRUMENT_CONFIG
+#from kite_auth import KiteAuth
+#from config import INSTRUMENT_CONFIG
 from modules.engine import calculate_gex_and_greeks
 
 # Import custom modules
@@ -264,33 +264,36 @@ with st.sidebar:
     if st.button("🔄 Fetch Data", type="primary", use_container_width=True):
         with st.spinner("Fetching Live Market Data..."):
             try:
+                # Use your existing kite_manager from session state
                 if data_source_type == "Kite Connect" and st.session_state.kite_manager:
-                    # 1. Fetch LIVE LTP (Replaces hardcoded Spot)
+                    kite = st.session_state.kite_manager.kite
+                    
+                    # 1. LIVE LTP: No more hardcoded 23500
                     idx_map = {"NIFTY": "NSE:NIFTY 50", "BANKNIFTY": "NSE:NIFTY BANK", "FINNIFTY": "NSE:NIFTY FIN SERVICE"}
                     trading_symbol = idx_map.get(symbol, f"NSE:{symbol}")
                     
-                    quote = st.session_state.kite_manager.kite.quote(trading_symbol)
+                    quote = kite.quote(trading_symbol)
                     spot = quote[trading_symbol]["last_price"]
                     
-                    # 2. Fetch Master Instruments to get LIVE Lot Size
-                    all_inst = pd.DataFrame(st.session_state.kite_manager.kite.instruments("NFO"))
+                    # 2. LIVE LOT SIZE: Automatically checks the exchange minimum
+                    all_inst = pd.DataFrame(kite.instruments("NFO"))
                     inst_metadata = all_inst[all_inst.name == symbol]
                     
-                    # Automatically get the correct Lot Size (No more hardcoding)
-                    current_lot_size = inst_metadata.iloc[0]['lot_size']
+                    # Fetching the first available lot size for this index
+                    current_lot_size = int(inst_metadata.iloc[0]['lot_size'])
                     
-                    # 3. Fetch Option Chain for nearest expiry
+                    # 3. LIVE OPTION CHAIN: Fetches based on nearest expiry
                     target_expiry = inst_metadata.expiry.min()
                     chain_inst = inst_metadata[inst_metadata.expiry == target_expiry]
                     
-                    # Filter strikes +/- 5% of Spot
-                    chain_inst = chain_inst[(chain_inst.strike >= spot*0.95) & (chain_inst.strike <= spot*1.05)]
+                    # Filter strikes +/- 10% of Spot (Dynamic)
+                    chain_inst = chain_inst[(chain_inst.strike >= spot*0.90) & (chain_inst.strike <= spot*1.10)]
                     
-                    # 4. Get Live Quotes for the Chain
+                    # 4. GET QUOTES FOR FULL CHAIN
                     symbols = ["NFO:" + s for s in chain_inst.tradingsymbol.tolist()]
-                    live_quotes = st.session_state.kite_manager.kite.quote(symbols)
+                    live_quotes = kite.quote(symbols)
                     
-                    # 5. Build the Options DataFrame
+                    # 5. BUILD DATAFRAME
                     rows = []
                     for sym, q in live_quotes.items():
                         tsym = sym.split(":")[1]
@@ -300,30 +303,29 @@ with st.sidebar:
                             'type': meta.instrument_type,
                             'oi': q['oi'],
                             'ltp': q['last_price'],
-                            'iv': q.get('oi_day_high', 1500) / 10000 # Rough IV estimation or use Mibian
+                            'iv': q.get('oi_day_high', 1500) / 10000 # Normalized IV
                         })
                     df = pd.DataFrame(rows)
-                    st.success(f"✅ Live {symbol} Data Loaded! LTP: ₹{spot:,.2f} | Lot Size: {current_lot_size}")
+                    st.success(f"✅ Live {symbol} Loaded! LTP: ₹{spot:,.2f} | Lot Size: {current_lot_size}")
                 
                 else:
-                    # Fallback for Sample or NSElib
+                    # Fallback Logic
                     live_spot = get_live_spot_price(symbol, 'nselib')
                     df, spot = generate_sample_data(symbol, live_spot)
-                    current_lot_size = 75 # Default fallback
+                    current_lot_size = 75 
                 
-                # Update Session State
+                # UPDATE STATE & CALCULATE
                 st.session_state.options_df = df
                 st.session_state.spot_price = spot
                 st.session_state.data_loaded = True
                 st.session_state.last_update = datetime.now()
                 
-                # Calculate GEX using the Dynamic Lot Size
+                # Pass the DYNAMIC lot size to the calculator
                 df_filtered = filter_strikes(df, spot, strike_range)
                 gex_df = calculate_gex(df_filtered, spot, expiry_date, risk_free_rate, lot_size=current_lot_size)
-                gamma_levels = find_gamma_levels(gex_df, spot)
                 
                 st.session_state.gex_df = gex_df
-                st.session_state.gamma_levels = gamma_levels
+                st.session_state.gamma_levels = find_gamma_levels(gex_df, spot)
 
             except Exception as e:
                 st.error(f"❌ Connection Error: {str(e)}")
