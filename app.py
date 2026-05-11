@@ -526,14 +526,14 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             for g, v in [("Delta", "call_delta"), ("Gamma", "call_gamma"),
                           ("Vega",  "call_vega"),  ("Theta", "call_theta"),
                           ("Rho",   "call_rho")]:
-                st.write(f"**{g}:** {ar[v]:.5f}")
+                st.write(f"**{g}:** {ar[v]:.1f}")
             st.write(f"**Theo:** ₹{ar['call_theo']:.2f}  |  **LTP:** ₹{ar['call_ltp']:.2f}")
         with c2:
             st.markdown("##### Put (ATM)")
             for g, v in [("Delta", "put_delta"), ("Gamma", "put_gamma"),
                           ("Vega",  "put_vega"),  ("Theta", "put_theta"),
                           ("Rho",   "put_rho")]:
-                st.write(f"**{g}:** {ar[v]:.5f}")
+                st.write(f"**{g}:** {ar[v]:.1f}")
             st.write(f"**Theo:** ₹{ar['put_theo']:.2f}  |  **LTP:** ₹{ar['put_ltp']:.2f}")
         st.markdown("---")
         st.subheader("Portfolio Exposure")
