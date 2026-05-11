@@ -571,9 +571,12 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                 st.success("✅ Positive Gamma – range-bound, stabilising")
             else:
                 st.warning("⚠️ Negative Gamma – trending, volatile")
-            (st.error("🐻 Bearish PCR") if pcr > 1.2 else
-            st.error("🐂 Bullish PCR") if pcr < 0.8 else
-            st.info("➡️ Neutral PCR"))
+            if pcr > 1.2:
+                st.error("🐻 Bearish PCR")
+            elif pcr < 0.8:
+                st.error("🐂 Bullish PCR")
+            else:
+                st.info("➡️ Neutral PCR")
         with ra2:
             st.markdown("##### Key Levels")
             st.write(f"**Max Pain:**   ₹{max_pain:,.0f}")
