@@ -1,63 +1,48 @@
 """
-Configuration file for GEX Terminal
+GEX Terminal – configuration
 
-NOTE: LOT SIZES here are FALLBACK defaults only.
-When Kite Connect is authenticated, lot sizes are fetched dynamically
-from the NFO instruments API so they always reflect the latest SEBI revision.
+This file contains ONLY:
+  • Kite Connect API credentials
+  • UI / UX preferences (chart height, refresh interval, thresholds)
+
+ALL instrument metadata (lot sizes, tick sizes, strike intervals, expiry
+dates) are fetched live from Kite Connect instruments API.
+Fallback tables for those values live in modules/utils.py and are clearly
+labelled as estimates for use when Kite is not connected.
 """
 
-# Kite Connect API Configuration
-KITE_API_KEY = ""        # Add your Kite API key here
-KITE_API_SECRET = ""     # Add your Kite API secret here
-KITE_REDIRECT_URL = "http://127.0.0.1"
-
-# Risk Parameters
-DEFAULT_RISK_FREE_RATE = 0.07   # 7 % annual
+# ---------------------------------------------------------------------------
+# Kite Connect
+# ---------------------------------------------------------------------------
+KITE_API_KEY    = ""      # your Kite API key
+KITE_API_SECRET = ""      # your Kite API secret
+KITE_REDIRECT   = "http://127.0.0.1"
 
 # ---------------------------------------------------------------------------
-# Fallback lot sizes  (authoritative source = Kite NFO instruments)
-# Last updated: May 2025 per NSE circular
+# Greeks
 # ---------------------------------------------------------------------------
-DEFAULT_LOT_SIZES = {
-    'NIFTY':      65,   # revised from 75 → 65 
-    'BANKNIFTY':  35,   # revised from 15 → 35
-    'FINNIFTY':   65,   # revised from 40 → 65
-    'MIDCPNIFTY': 120,  # revised from 75 → 120
-}
+DEFAULT_RISK_FREE_RATE = 0.07   # 7 % p.a.
 
 # ---------------------------------------------------------------------------
-# Expiry weekday per index (0 = Mon, 3 = Thu)
-# Used as FALLBACK when Kite is not connected.
+# UI / refresh
 # ---------------------------------------------------------------------------
-EXPIRY_WEEKDAYS = {
-    'NIFTY':      3,   # Thursday
-    'BANKNIFTY':  2,   # Wednesday
-    'FINNIFTY':   1,   # Tuesday
-    'MIDCPNIFTY': 0,   # Monday
-}
+AUTO_REFRESH_INTERVAL  = 15    # seconds between full option-chain refreshes
+SPOT_REFRESH_INTERVAL  = 5     # seconds between lightweight LTP spot updates
+CACHE_TTL              = 15    # seconds
 
-# Trading Parameters
-MAX_CAPITAL = 1_000_000      # Default max capital (₹)
-MAX_RISK_PER_TRADE = 0.02    # 2 % max risk per trade
+CHART_HEIGHT           = 500
+TABLE_HEIGHT           = 400
+THEME                  = "plotly_dark"
 
-# Data Refresh
-AUTO_REFRESH_INTERVAL = 15   # seconds
-CACHE_TTL = 15               # seconds
+# ---------------------------------------------------------------------------
+# Strike range shown in the terminal
+# ---------------------------------------------------------------------------
+DEFAULT_STRIKE_RANGE_PCT = 10   # ± % around spot
 
-# Strikes Configuration
-STRIKE_RANGE_PERCENT = 10    # Default ± % around spot
-NUM_STRIKES_TO_SHOW  = 40
-
-# Greeks Calculation
-MIN_TIME_TO_EXPIRY = 1 / 365   # 1 day minimum (years)
-DEFAULT_IV         = 0.15      # 15 % default IV when calculation fails
-
-# Alert Thresholds
-PCR_BULLISH_THRESHOLD       = 0.8
-PCR_BEARISH_THRESHOLD       = 1.2
-MAX_PAIN_DISTANCE_THRESHOLD = 0.02   # 2 %
-
-# UI Configuration
-CHART_HEIGHT = 500
-TABLE_HEIGHT = 400
-THEME = 'plotly_dark'
+# ---------------------------------------------------------------------------
+# Alert thresholds
+# ---------------------------------------------------------------------------
+PCR_BULLISH_THRESHOLD        = 0.8
+PCR_BEARISH_THRESHOLD        = 1.2
+MAX_PAIN_DISTANCE_THRESHOLD  = 0.02   # 2 %
+GAMMA_FLIP_ZONE_THRESHOLD    = 0.01   # 1 %
