@@ -567,12 +567,13 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         ra1, ra2 = st.columns(2)
         with ra1:
             st.markdown("##### Market Regime")
-            (st.success("✅ Positive Gamma – range-bound, stabilising")
-             if net_gex > 0 else
-             st.warning("⚠️ Negative Gamma – trending, volatile"))
+            if net_gex > 0:
+                st.success("✅ Positive Gamma – range-bound, stabilising")
+            else:
+                st.warning("⚠️ Negative Gamma – trending, volatile")
             (st.error("🐻 Bearish PCR") if pcr > 1.2 else
-             st.error("🐂 Bullish PCR") if pcr < 0.8 else
-             st.info("➡️ Neutral PCR"))
+            st.error("🐂 Bullish PCR") if pcr < 0.8 else
+            st.info("➡️ Neutral PCR"))
         with ra2:
             st.markdown("##### Key Levels")
             st.write(f"**Max Pain:**   ₹{max_pain:,.0f}")
