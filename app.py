@@ -85,7 +85,7 @@ for k, v in {
     if k not in st.session_state:
         st.session_state[k] = v
 
-st.markdown('<p class="main-header">📊 Professional GEX Terminal</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header">📊 PROFESSIONAL GEX TERMINAL</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">Kite Connect v3 · Real-Time Greeks · VIX Chart · Dynamic S/R</p>',
             unsafe_allow_html=True)
 
@@ -93,7 +93,7 @@ st.markdown('<p class="sub-header">Kite Connect v3 · Real-Time Greeks · VIX Ch
 # SIDEBAR
 # ═══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.header("⚙️ Configuration")
+    st.header("⚙️ CONFIGURATION")
 
     # ── Data source ───────────────────────────────────────────────────────────
     st.subheader("📡 Data Source")
@@ -796,7 +796,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#888;padding:1rem'>
-  <b>Professional GEX Terminal v3.1</b><br>
+  <b>Professional GEX Terminal v3</b><br>
   Kite Connect v3 · /quote/ltp spot · /quote chain · historical_data charts<br>
   <span style='font-size:.75rem'>
     ⚠️ Educational only. Not financial advice. Trade at your own risk.
