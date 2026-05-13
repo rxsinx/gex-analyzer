@@ -14,7 +14,7 @@ Debug fixes in this version
 
 import streamlit as st
 import pandas as pd
-import pytz                       # new add
+
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
@@ -53,15 +53,6 @@ except Exception:
     SPOT_REFRESH, CHAIN_REFRESH    = 5, 15
     RFR_DEFAULT                    = 0.07
     STRIKE_RANGE_DEFAULT           = 10
-
-# ----------------TIME---------------------------------
-# 1. Define the IST timezone
-IST = pytz.timezone('Asia/Kolkata')
-
-# 2. Get the current time in UTC and convert to IST
-# If you are using datetime.now(), wrap it like this:
-utc_now = datetime.now(pytz.utc)
-ist_now = utc_now.astimezone(IST)
 
 
 # ── page ─────────────────────────────────────────────────────────────────────
