@@ -693,6 +693,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             st.write(f"**Put Wall:**   ₹{max_put_oi_strike:,.0f}")
 
     # ── Tab 6: Chain ──────────────────────────────────────────────────────────
+    # ── Tab 6: Chain ──────────────────────────────────────────────────────────
     with tab6:
         st.subheader("Options Chain with Greeks")
         cols_ord = [
@@ -713,8 +714,27 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                         .argsort()[:3]]["strike"].values)
 
         def _hl(row):
-            return (["background-color:rgba(255,165,0,0.3)"]*len(row)
-                    if row["Strike"] in atm_strikes else [""]*len(row))
+            # Initialize with empty strings
+            styles = [""] * len(row)
+            strike = row["Strike"]
+            
+            # 1. Call ITM (Mild Green): Strikes BELOW current spot
+            if strike < spot_price:
+                for i, col in enumerate(disp.columns):
+                    if col.startswith("C-"): # Apply only to Call side columns
+                        styles[i] = "background-color: rgba(34, 197, 94, 0.15)"
+            
+            # 2. Put ITM (Mild Red): Strikes ABOVE current spot
+            if strike > spot_price:
+                for i, col in enumerate(disp.columns):
+                    if col.startswith("P-"): # Apply only to Put side columns
+                        styles[i] = "background-color: rgba(239, 68, 68, 0.15)"
+
+            # 3. ATM Highlight (Orange overlay on Strike column)
+            if strike in atm_strikes:
+                styles[0] = "background-color: rgba(255, 165, 0, 0.4); font-weight: bold"
+                
+            return styles
 
         fmt = {
             "Strike":"{:.0f}","C-OI":"{:,.0f}","P-OI":"{:,.0f}",
@@ -724,14 +744,18 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "C-ν":"{:.4f}","P-ν":"{:.4f}","C-Θ":"{:.2f}","P-Θ":"{:.2f}",
         }
         vf = {k:v for k,v in fmt.items() if k in disp.columns}
+        
         st.dataframe(disp.style.apply(_hl, axis=1).format(vf),
                      height=500, use_container_width=True)
+        
+        # Ensure download timestamp is also in IST
+        ist_now = datetime.now(pytz.timezone('Asia/Kolkata'))
         st.download_button(
             "📥 Download CSV", gex_df.to_csv(index=False),
             file_name=f"gex_{symbol}_{st.session_state.selected_expiry}_"
-                      f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                      f"{ist_now.strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv")
-
+        
     # ── Tab 7: Guide ──────────────────────────────────────────────────────────
     with tab7:
         st.subheader("ℹ️ Guide")
