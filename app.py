@@ -117,7 +117,7 @@ with st.sidebar:
 
     # ── Data source ───────────────────────────────────────────────────────────
     st.subheader("📡 Data Source")
-    data_source = st.radio("Source:", ["NSE Live (nselib)", "Kite Connect", "Sample Data"])
+    data_source = "Kite Connect"
 
     # ── Kite auth ─────────────────────────────────────────────────────────────
     if data_source == "Kite Connect":
