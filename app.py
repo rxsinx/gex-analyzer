@@ -448,9 +448,10 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     n6.metric("🛡️ Put Wall",         f"₹{max_put_oi_strike:,.0f}")
     n7.metric("📅 Expiry",           st.session_state.selected_expiry or "—")
     n8.metric("🕐 Updated",
-              st.session_state.last_update.strftime("%H:%M:%S")
+              st.session_state.last_update.astimezone(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S") 
               if st.session_state.last_update else "—")
-
+    
+    
     # ── Tabs ──────────────────────────────────────────────────────────────────
     st.markdown("---")
     tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
