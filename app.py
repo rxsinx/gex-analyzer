@@ -694,7 +694,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             st.write(f"**Put Wall:**   ₹{max_put_oi_strike:,.0f}")
 
     # ── Tab 6: Chain ──────────────────────────────────────────────────────────
-    # ── Tab 6: Chain ──────────────────────────────────────────────────────────
     with tab6:
         st.subheader("Options Chain with Greeks")
         cols_ord = [
@@ -719,16 +718,29 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             styles = [""] * len(row)
             strike = row["Strike"]
             
-            # 1. Call ITM (Mild Green): Strikes BELOW current spot
-            if strike < spot_price:
-                for i, col in enumerate(disp.columns):
-                    if col.startswith("C-"): # Apply only to Call side columns
+            # Calculate 2% range boundaries
+            lower_bound = spot_price * 0.98
+            upper_bound = spot_price * 1.02
+            is_in_range = lower_bound <= strike <= upper_bound
+
+            # 1. Call side logic
+            for i, col in enumerate(disp.columns):
+                if col.startswith("C-"):
+                    # Highlight Yellow if Premium < 10 AND strike is within +/- 2% range
+                    if col == "C-LTP" and row["C-LTP"] < 10 and is_in_range:
+                        styles[i] = "background-color: rgba(255, 255, 0, 0.6); color: black; font-weight: bold"
+                    # Else fall back to ITM Green
+                    elif strike < spot_price:
                         styles[i] = "background-color: rgba(34, 197, 94, 0.15)"
             
-            # 2. Put ITM (Mild Red): Strikes ABOVE current spot
-            if strike > spot_price:
-                for i, col in enumerate(disp.columns):
-                    if col.startswith("P-"): # Apply only to Put side columns
+            # 2. Put side logic
+            for i, col in enumerate(disp.columns):
+                if col.startswith("P-"):
+                    # Highlight Yellow if Premium < 10 AND strike is within +/- 2% range
+                    if col == "P-LTP" and row["P-LTP"] < 10 and is_in_range:
+                        styles[i] = "background-color: rgba(255, 255, 0, 0.6); color: black; font-weight: bold"
+                    # Else fall back to ITM Red
+                    elif strike > spot_price:
                         styles[i] = "background-color: rgba(239, 68, 68, 0.15)"
 
             # 3. ATM Highlight (Orange overlay on Strike column)
