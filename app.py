@@ -1,5 +1,5 @@
 """
-Professional GEX Terminal v3.1
+Professional GEX Terminal
 Kite Connect v3 · NSE Live · Full Greeks · VIX + 1-Hr Chart · Dynamic S/R
 
 Debug fixes in this version
@@ -86,7 +86,7 @@ for k, v in {
         st.session_state[k] = v
 
 st.markdown('<p class="main-header">📊 PROFESSIONAL GEX TERMINAL</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Kite Connect v3 · Real-Time Greeks · VIX Chart · Dynamic S/R</p>',
+st.markdown('<p class="sub-header">Kite Connect · Real-Time Greeks · VIX Chart · Dynamic S/R</p>',
             unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -94,14 +94,11 @@ st.markdown('<p class="sub-header">Kite Connect v3 · Real-Time Greeks · VIX Ch
 # ═══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.header("⚙️ CONFIGURATION")
-
     # ── Data source ───────────────────────────────────────────────────────────
     st.subheader("📡 Data Source")
-    data_source = st.radio("Source:", ["NSE Live (nselib)", "Kite Connect", "Sample Data"])
-
+    data_source = st.radio("Source:", ["Kite Connect"])
     # ── Kite auth ─────────────────────────────────────────────────────────────
     if data_source == "Kite Connect":
-        st.markdown("---")
         st.subheader("🔐 Kite Authentication")
 
         if not st.session_state.kite_authenticated:
@@ -796,7 +793,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#888;padding:1rem'>
-  <b>Professional GEX Terminal v3</b><br>
+  <b>Professional GEX Terminal</b><br>
   Kite Connect v3 · /quote/ltp spot · /quote chain · historical_data charts<br>
   <span style='font-size:.75rem'>
     ⚠️ Educational only. Not financial advice. Trade at your own risk.
