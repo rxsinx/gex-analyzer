@@ -729,7 +729,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             # 1. Call side logic
             for i, col in enumerate(disp.columns):
                 if col.startswith("C-"):
-                    # Highlight Yellow if Premium < 10 AND strike is within +/- 2% range
+                    # Highlight Yellow if Premium < 10 AND strike is within +/- 3% range
                     if col == "C-LTP" and row["C-LTP"] < 10 and is_in_range:
                         styles[i] = "background-color: rgba(255, 255, 0, 0.6); color: black; font-weight: bold"
                     # Else fall back to ITM Green
@@ -739,7 +739,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             # 2. Put side logic
             for i, col in enumerate(disp.columns):
                 if col.startswith("P-"):
-                    # Highlight Yellow if Premium < 10 AND strike is within +/- 2% range
+                    # Highlight Yellow if Premium < 10 AND strike is within +/- 3% range
                     if col == "P-LTP" and row["P-LTP"] < 10 and is_in_range:
                         styles[i] = "background-color: rgba(255, 255, 0, 0.6); color: black; font-weight: bold"
                     # Else fall back to ITM Red
