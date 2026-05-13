@@ -1,5 +1,5 @@
 """
-Professional GEX Terminal
+Professional GEX Terminal v3.1
 Kite Connect v3 · NSE Live · Full Greeks · VIX + 1-Hr Chart · Dynamic S/R
 
 Debug fixes in this version
@@ -58,18 +58,36 @@ st.set_page_config(page_title="GEX Terminal", page_icon="📊",
                    layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
 <style>
-.main-header{font-size:2.6rem;font-weight:bold;
+/* remove Streamlit default top padding */
+.block-container{padding-top:0.4rem !important;padding-bottom:0.2rem !important}
+/* compact header */
+.main-header{font-size:1.6rem;font-weight:bold;
   background:linear-gradient(90deg,#1f77b4,#ff7f0e);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  text-align:center;margin-bottom:.3rem}
-.sub-header{text-align:center;color:#888;font-size:1rem;margin-bottom:1rem}
-.live-dot{display:inline-block;width:9px;height:9px;background:#22c55e;
-  border-radius:50%;margin-right:5px;animation:pulse 2s infinite}
+  text-align:center;margin:0;padding:0;line-height:1.2}
+.sub-header{text-align:center;color:#888;font-size:0.76rem;
+  margin:0 0 0.2rem 0;padding:0}
+/* thin dividers */
+hr{margin:0.2rem 0 !important;border-color:rgba(49,51,63,0.25) !important}
+/* smaller metric values */
+[data-testid="stMetricValue"]{font-size:1.0rem !important;line-height:1.25 !important}
+[data-testid="stMetricLabel"]{font-size:0.68rem !important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[data-testid="stMetricDelta"]{font-size:0.62rem !important}
+div[data-testid="metric-container"]{padding:0.1rem 0.35rem !important}
+/* compact alerts/info */
+.stAlert{padding:0.25rem 0.6rem !important;font-size:0.76rem !important}
+/* live dot */
+.live-dot{display:inline-block;width:8px;height:8px;background:#22c55e;
+  border-radius:50%;margin-right:4px;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.stTabs [data-baseweb="tab"]{height:44px;background:#f0f2f6;
-  border-radius:5px 5px 0 0;padding:7px 16px;font-weight:600}
+/* tabs */
+.stTabs [data-baseweb="tab"]{height:34px;background:#f0f2f6;
+  border-radius:5px 5px 0 0;padding:4px 13px;font-weight:600;font-size:0.82rem}
 .stTabs [aria-selected="true"]{
   background:linear-gradient(135deg,#667eea,#764ba2);color:white}
+/* tighten column gaps */
+[data-testid="stHorizontalBlock"]{gap:0.4rem !important}
 </style>""", unsafe_allow_html=True)
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -85,20 +103,23 @@ for k, v in {
     if k not in st.session_state:
         st.session_state[k] = v
 
-st.markdown('<p class="main-header">📊 PROFESSIONAL GEX TERMINAL</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Kite Connect · Real-Time Greeks · VIX Chart · Dynamic S/R</p>',
+st.markdown('<p class="main-header">📊 Professional GEX Terminal</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Kite Connect v3 · Real-Time Greeks · VIX Chart · Dynamic S/R</p>',
             unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ═══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.header("⚙️ CONFIGURATION")
+    st.header("⚙️ Configuration")
+
     # ── Data source ───────────────────────────────────────────────────────────
     st.subheader("📡 Data Source")
-    data_source = st.radio("Source:", ["Kite Connect"])
+    data_source = st.radio("Source:", ["NSE Live (nselib)", "Kite Connect", "Sample Data"])
+
     # ── Kite auth ─────────────────────────────────────────────────────────────
     if data_source == "Kite Connect":
+        st.markdown("---")
         st.subheader("🔐 Kite Authentication")
 
         if not st.session_state.kite_authenticated:
@@ -385,7 +406,7 @@ with st.sidebar:
 # MAIN CONTENT
 # ═══════════════════════════════════════════════════════════════════════════════
 if st.session_state.data_loaded and st.session_state.gex_df is not None:
-
+    st.markdown("---")   # single thin line below header
     spot_price   = st.session_state.spot_price
     gex_df       = st.session_state.gex_df
     gamma_levels = st.session_state.gamma_levels
@@ -399,36 +420,34 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     max_call_oi_strike= gamma_levels.get("max_call_oi_strike", spot_price)
     max_put_oi_strike = gamma_levels.get("max_put_oi_strike", spot_price)
 
-    # ── OHLC banner ───────────────────────────────────────────────────────────
-    st.markdown("---")
+    # ── All metrics in one compact block (no dividers between rows) ───────────
     ohlc = st.session_state.spot_ohlc or {}
-    ba, bb, bc, bd, be = st.columns(5)
-    ba.metric("💰 Spot",  f"₹{spot_price:,.2f}")
-    bb.metric("📈 Open",  f"₹{ohlc['open']:,.2f}"  if ohlc else "—")
-    bc.metric("⬆ High",   f"₹{ohlc['high']:,.2f}"  if ohlc else "—")
-    bd.metric("⬇ Low",    f"₹{ohlc['low']:,.2f}"   if ohlc else "—")
-    be.metric("🔚 Prev",  f"₹{ohlc['close']:,.2f}" if ohlc else "—")
 
-    # ── Key metrics ───────────────────────────────────────────────────────────
-    st.markdown("---")
-    c1,c2,c3,c4,c5,c6 = st.columns(6)
+    # Row 1: OHLC + PCR + Max Pain + Gamma Flip + GEX Regime in one 9-col row
+    m1,m2,m3,m4,m5,m6,m7,m8,m9 = st.columns(9)
+    m1.metric("💰 Spot",        f"₹{spot_price:,.0f}")
+    m2.metric("Open",           f"₹{ohlc['open']:,.0f}"  if ohlc else "—")
+    m3.metric("High",           f"₹{ohlc['high']:,.0f}"  if ohlc else "—")
+    m4.metric("Low",            f"₹{ohlc['low']:,.0f}"   if ohlc else "—")
+    m5.metric("Prev",           f"₹{ohlc['close']:,.0f}" if ohlc else "—")
     pcr_icon = "🐻" if pcr>1.2 else "🐂" if pcr<0.8 else "➡️"
-    c1.metric(f"{pcr_icon} PCR",      f"{pcr:.3f}")
-    c2.metric("🎯 Max Pain",  f"₹{max_pain:,.0f}",  delta=f"{max_pain -spot_price:+.0f}")
-    c3.metric("🔄 Gamma Flip",f"₹{gamma_flip:,.0f}",delta=f"{gamma_flip-spot_price:+.0f}")
-    c4.metric("📊 GEX Regime","🟢 Positive" if net_gex>0 else "🔴 Negative")
-    c5.metric("💹 Net GEX",   format_number(net_gex))
-    c6.metric("📦 Lot Size",  str(lot_size))
+    m6.metric(f"{pcr_icon} PCR",f"{pcr:.3f}")
+    m7.metric("🎯 Max Pain",    f"₹{max_pain:,.0f}",  delta=f"{max_pain -spot_price:+.0f}")
+    m8.metric("🔄 Gamma Flip",  f"₹{gamma_flip:,.0f}",delta=f"{gamma_flip-spot_price:+.0f}")
+    m9.metric("📊 Regime",      "🟢 +GEX" if net_gex>0 else "🔴 -GEX")
 
-    st.markdown("---")
-    d1,d2,d3,d4 = st.columns(4)
-    d1.metric("📈 Call OI",         f"{gamma_levels.get('total_call_oi',0):,.0f}")
-    d2.metric("📉 Put OI",          f"{gamma_levels.get('total_put_oi',0):,.0f}")
-    d3.metric("🚧 Max Call Strike", f"₹{max_call_oi_strike:,.0f}")
-    d4.metric("🛡️ Max Put Strike",  f"₹{max_put_oi_strike:,.0f}")
-
-    st.info(f"**{symbol}** · Lot {lot_size} · Interval ₹{si:.0f} · "
-            f"Expiry {st.session_state.selected_expiry} · Spot ₹{spot_price:,.2f}")
+    # Row 2: Net GEX + Lot + Call OI + Put OI + Max Call + Max Put + Symbol info
+    n1,n2,n3,n4,n5,n6,n7,n8 = st.columns(8)
+    n1.metric("💹 Net GEX",          format_number(net_gex))
+    n2.metric("📦 Lot / Interval",   f"{lot_size} / ₹{si:.0f}")
+    n3.metric("📈 Call OI",          f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
+    n4.metric("📉 Put OI",           f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
+    n5.metric("🚧 Call Wall",        f"₹{max_call_oi_strike:,.0f}")
+    n6.metric("🛡️ Put Wall",         f"₹{max_put_oi_strike:,.0f}")
+    n7.metric("📅 Expiry",           st.session_state.selected_expiry or "—")
+    n8.metric("🕐 Updated",
+              st.session_state.last_update.strftime("%H:%M:%S")
+              if st.session_state.last_update else "—")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
     st.markdown("---")
@@ -793,7 +812,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#888;padding:1rem'>
-  <b>Professional GEX Terminal</b><br>
+  <b>Professional GEX Terminal v3.1</b><br>
   Kite Connect v3 · /quote/ltp spot · /quote chain · historical_data charts<br>
   <span style='font-size:.75rem'>
     ⚠️ Educational only. Not financial advice. Trade at your own risk.
