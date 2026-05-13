@@ -394,9 +394,12 @@ with st.sidebar:
         st.caption(f"📅 {st.session_state.selected_expiry}")
         st.caption(f"📦 Lot {st.session_state.lot_size} · 📏 ₹{st.session_state.strike_interval:.0f}")
         if st.session_state.last_update:
-            st.caption(f"🕐 Chain: {st.session_state.last_update.strftime('%H:%M:%S')}")
+            ist_chain = st.session_state.last_update.astimezone(pytz.timezone('Asia/Kolkata'))
+            st.caption(f"🕐 Chain: {ist_chain.strftime('%H:%M:%S')}")
         if st.session_state.last_spot_update:
-            st.caption(f"💹 Spot: {st.session_state.last_spot_update.strftime('%H:%M:%S')}")
+            ist_spot = st.session_state.last_spot_update.astimezone(pytz.timezone('Asia/Kolkata'))
+            st.caption(f"💹 Spot: {ist_spot.strftime('%H:%M:%S')}")
+        
         try:
             mkt = get_market_status()
             e   = "🟢" if "Open" in mkt.get("market_state","") else "🔴"
