@@ -14,7 +14,7 @@ Debug fixes in this version
 
 import streamlit as st
 import pandas as pd
-
+import pytz  # <--- Add this line
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
