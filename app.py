@@ -732,13 +732,12 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     with tab7:
         st.subheader("ℹ️ Guide")
         st.markdown(f"""
-### Expiry Calendar (NSE – May 2025)
+### Expiry Calendar (NSE – May 2026)
 | Index | Weekly | Day |
 |-------|--------|-----|
-| NIFTY | ✅ Yes | Thursday |
-| BANKNIFTY | ❌ No (monthly) | Last Wednesday |
-| FINNIFTY | ✅ Yes | Tuesday |
-| MIDCPNIFTY | ✅ Yes | Monday |
+| NIFTY | ✅ Yes | Tuesday) | Last Tuesay |
+| FINNIFTY | ❌ No (monthly) | Last Tuesday |
+| MIDCPNIFTY | ❌ No (monthly) | Last Tueday |
 
 ### Debug: Why is Kite fetch failing?
 1. **Token expired** – Kite tokens reset at **6:00 AM daily**. Reconnect each morning.
@@ -750,7 +749,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 Requires Kite Connect. Fetches historical OHLCV via `kite.historical_data()`.
 - **INDIA VIX** instrument token: 264969 (stable NSE-assigned)
 - VIX zones: Calm (<12) · Low (<15) · Normal (<20) · Elevated (<25) · High Fear (<35)
-- S/R detection: swing highs/lows (configurable lookback), clustered within 0.15%, plus classical pivots and previous-day levels
 
 ### IV Calculation
 Kite does not provide IV. Terminal back-solves from LTP using Brent's method on Black-Scholes.
@@ -769,7 +767,7 @@ else:
 | Expiries | From Kite NFO instruments (holiday-aware) |
 | Lot size & interval | From Kite instruments |
 | BANKNIFTY | Monthly-only on NSE |
-| Charts | 1-hr index + VIX + dynamic S/R via `historical_data()` |
+| Charts | Gamma Confusion Matrix & Exposure Overlap |
 | Debug | 🔍 panel tests session → LTP → instruments → quote |
     """)
 
