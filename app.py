@@ -738,7 +738,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 | NIFTY | ✅ Yes / ✅ Yes  | Tuesday | Last Tuesay |
 | BANKNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
 | FINNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
-| MIDCPNIFTY | ❌ No / ✅ Yes  | Last Tueday |
+| MIDCPNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
 
 ### Debug: Why is Kite fetch failing?
 1. **Token expired** – Kite tokens reset at **6:00 AM daily**. Reconnect each morning.
