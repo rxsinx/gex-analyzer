@@ -746,6 +746,13 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 3. **Instrument cache** – if the cache is stale, click "🗑 Clear Instrument Cache" and retry.
 4. **Market closed** – `/quote` may return 0 OI / LTP outside trading hours. The terminal still works but GEX may show zeros.
 
+### The Core First-Order Greeks
+1. Delta (\(\Delta \)): Measures the expected change in option price per $1.00 move in the underlying asset.
+2. Theta (\(\Theta \)): Quantifies the daily rate of time decay affecting the option's extrinsic value.
+3. Vega (\(\nu \)): Measures price sensitivity to a 1% change in the underlying asset's implied volatility (IV).
+4. Rho (\(\rho \)): Measures sensitivity to a 1% change in the risk-free interest rate.
+5. Gamma (\(\Gamma \)): Tracks the acceleration of Delta per $1.00 move in the underlying asset price.
+
 ### Charts Tab
 Requires Kite Connect. Fetches historical OHLCV via `kite.historical_data()`.
 - **INDIA VIX** instrument token: 264969 (stable NSE-assigned)
