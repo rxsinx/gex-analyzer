@@ -750,7 +750,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 1. Delta (\(\Delta \)): Measures the expected change in option price per $1.00 move in the underlying asset.
 2. Theta (\(\Theta \)): Quantifies the daily rate of time decay affecting the option's extrinsic value.
 3. Vega (\(\nu \)): Measures price sensitivity to a 1% change in the underlying asset's implied volatility (IV).
-4. Rho (\(\rho \)): Measures sensitivity to a 1% change in the risk-free interest rate.
+4. Rho : Measures sensitivity to a 1% change in the risk-free interest rate.
 5. Gamma (\(\Gamma \)): Tracks the acceleration of Delta per $1.00 move in the underlying asset price.
 
 ### Charts Tab
