@@ -9,7 +9,7 @@ Debug fixes in this version
 * All kite_mgr calls wrapped in try/except with clear error messages
 * 🔍 Debug panel runs step-by-step test_connection() and shows each result
 * chart_analysis.py correctly placed in modules/
-* Charts tab: 1-hr index candlestick + India VIX + dynamic S/R lines
+* Charts Gamma Confusion Matrix & Exposure Overlap
 """
 
 import streamlit as st
@@ -114,50 +114,47 @@ st.markdown('<p class="sub-header">Kite Connect v3 · Real-Time Greeks · VIX Ch
 # ═══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.header("⚙️ Configuration")
-
     # ── Data source ───────────────────────────────────────────────────────────
     st.subheader("📡 Data Source")
     data_source = "Kite Connect"
 
     # ── Kite auth ─────────────────────────────────────────────────────────────
-    if data_source == "Kite Connect":
-        st.markdown("---")
-        st.subheader("🔐 Kite Authentication")
-
-        if not st.session_state.kite_authenticated:
-            api_key    = st.text_input("API Key",    value=KITE_API_KEY,    type="password")
-            api_secret = st.text_input("API Secret", value=KITE_API_SECRET, type="password")
-
-            if st.button("🔗 Connect to Kite", type="primary"):
+    # -- Kite auth ─────────────────────────────────────────────────────────────
+        if data_source == "Kite Connect":
+            st.subheader("🔐 Kite Authentication")
+            
+            if not st.session_state.kite_authenticated:
+                api_key    = st.text_input("API Key",    value=KITE_API_KEY,    type="password")
+                api_secret = st.text_input("API Secret", value=KITE_API_SECRET, type="password")
+                
+                # Automatically generate the login URL if keys are provided
                 if api_key and api_secret:
-                    km  = KiteManager(api_key, api_secret)
-                    url = km.get_login_url()
-                    st.info(f"**Step 1:** [Login to Kite]({url})")
-                    st.info("**Step 2:** Copy the `request_token` from the redirect URL")
+                    km_url = KiteManager(api_key, api_secret)
+                    login_url = km_url.get_login_url()
+                    # Link button opens the URL directly in a new tab
+                    st.link_button("🔗 Connect to Kite", login_url, type="primary", use_container_width=True)
                 else:
-                    st.error("Enter API Key and Secret first.")
+                    st.warning("Enter API Key and Secret to enable connection.")
 
-            req_token = st.text_input("Paste Request Token here:")
-            if req_token and st.button("✅ Generate Session", type="primary"):
-                if api_key and api_secret:
-                    km_temp = KiteManager(api_key, api_secret)
-                    ok, msg = km_temp.set_access_token(req_token)
-                    if ok:
-                        st.session_state.kite_manager       = km_temp
-                        st.session_state.kite_authenticated = True
-                        st.success(f"✅ {msg}")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Authentication failed: {msg}")
-                else:
-                    st.error("Enter API Key and Secret first.")
-        else:
-            st.success("✅ Kite Connected")
-            col_r, col_d = st.columns(2)
-            with col_d:
+                # Clean token input without "Step" labels
+                req_token = st.text_input("Paste Request Token from URL:")
+                
+                if req_token and st.button("✅ Generate Session", type="primary", use_container_width=True):
+                    if api_key and api_secret:
+                        km_temp = KiteManager(api_key, api_secret)
+                        ok, msg = km_temp.set_access_token(req_token)
+                        if ok:
+                            st.session_state.kite_manager = km_temp
+                            st.session_state.kite_authenticated = True
+                            st.success("✅ Connected Successfully")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Error: {msg}")
+            else:
+                st.success("✅ Kite Connected")
                 if st.button("Disconnect", use_container_width=True):
                     st.session_state.kite_authenticated = False
-                    st.session_state.kite_manager       = None
+                    st.session_state.kite_manager = None
                     st.rerun()
 
             # ── 🔍 Debug panel ──────────────────────────────────────────────
