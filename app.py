@@ -1,6 +1,6 @@
 """
-Professional GEX Terminal v3.1
-Kite Connect v3 · NSE Live · Full Greeks · VIX + 1-Hr Chart · Dynamic S/R
+Professional GEX Terminal v3
+Kite Connect v3 · NSE Live · Full Greeks · 
 
 Debug fixes in this version
 ----------------------------
@@ -736,6 +736,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 | Index | Weekly | Day |
 |-------|--------|-----|
 | NIFTY | ✅ Yes | Tuesday) | Last Tuesay |
+| BANKNIFTY | ❌ No (monthly) | Last Tuesday |
 | FINNIFTY | ❌ No (monthly) | Last Tuesday |
 | MIDCPNIFTY | ❌ No (monthly) | Last Tueday |
 
@@ -808,7 +809,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#888;padding:1rem'>
-  <b>Professional GEX Terminal v3.1</b><br>
+  <b>Professional GEX Terminal v3</b><br>
   Kite Connect v3 · /quote/ltp spot · /quote chain · historical_data charts<br>
   <span style='font-size:.75rem'>
     ⚠️ Educational only. Not financial advice. Trade at your own risk.
