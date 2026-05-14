@@ -434,18 +434,19 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     m8.metric("🔄 Gamma Flip",  f"₹{gamma_flip:,.0f}",delta=f"{gamma_flip-spot_price:+.0f}")
     m9.metric("📊 Regime",      "🟢 +GEX" if net_gex>0 else "🔴 -GEX")
 
-    # Row 2: Net GEX + Lot + Call OI + Put OI + Max Call + Max Put + Symbol info
-    n1,n2,n3,n4,n5,n6,n7,n8 = st.columns(8)
-    n1.metric("💹 Net GEX",          format_number(net_gex))
-    n2.metric("📦 Lot / Interval",   f"{lot_size} / ₹{si:.0f}")
-    n3.metric("📈 Call OI",          f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
-    n4.metric("📉 Put OI",           f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
-    n5.metric("🚧 Call Wall",        f"₹{max_call_oi_strike:,.0f}")
-    n6.metric("🛡️ Put Wall",         f"₹{max_put_oi_strike:,.0f}")
-    n7.metric("📅 Expiry",           st.session_state.selected_expiry or "—")
-    n8.metric("🕐 Updated",
-              st.session_state.last_update.astimezone(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S") 
-              if st.session_state.last_update else "—")
+    # Row 2: Call GEX + Put GEX + Net GEX + Lot/Interval + OI + Walls
+    n1, n2, n3, n4, n5, n6, n7, n8 = st.columns(8)
+    n1.metric("🔴 Call GEX",         format_number(gex_df['call_gex'].sum()))
+    n2.metric("🟢 Put GEX",          format_number(gex_df['put_gex'].sum()))
+    n3.metric("💹 Net GEX",          format_number(net_gex))
+    # Main structural metrics
+    n4.metric("📦 Lot / Interval",   f"{lot_size} / ₹{si:.0f}")
+    n5.metric("📈 Call OI",          f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
+    n6.metric("📉 Put OI",           f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
+    
+    # Support/Resistance Walls
+    n7.metric("🚧 Call Wall",        f"₹{max_call_oi_strike:,.0f}")
+    n8.metric("🛡️ Put Wall",         f"₹{max_put_oi_strike:,.0f}")
     
     
     # ── Tabs ──────────────────────────────────────────────────────────────────
