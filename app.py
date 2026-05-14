@@ -733,12 +733,12 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         st.subheader("ℹ️ Guide")
         st.markdown(f"""
 ### Expiry Calendar (NSE – May 2026)
-| Index | Weekly | Day |
+| Index | Weekly / Monthly | Day |
 |-------|--------|-----|
-| NIFTY | ✅ Yes | Tuesday) | Last Tuesay |
-| BANKNIFTY | ❌ No (monthly) | Last Tuesday |
-| FINNIFTY | ❌ No (monthly) | Last Tuesday |
-| MIDCPNIFTY | ❌ No (monthly) | Last Tueday |
+| NIFTY | ✅ Yes / ✅ Yes  | Tuesday | Last Tuesay |
+| BANKNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
+| FINNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
+| MIDCPNIFTY | ❌ No / ✅ Yes  | Last Tueday |
 
 ### Debug: Why is Kite fetch failing?
 1. **Token expired** – Kite tokens reset at **6:00 AM daily**. Reconnect each morning.
