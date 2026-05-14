@@ -542,124 +542,86 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         e4.metric("ΘEX/day", format_number(gex_df["total_tex"].sum()))
 
     # ── Tab 4: Charts ─────────────────────────────────────────────────────────
+    # -- Tab 4: Charts & Matrix --------------------------------------------------------
     with tab4:
-        st.subheader("📉 Index + India VIX — 1-Hr Chart with Dynamic S/R")
-
-        if not kite_mgr:
-            st.warning("📡 Charts require **Kite Connect** (historical data API).\n\n"
-                       "Select **Kite Connect** as data source and authenticate.")
-        else:
-            # Chart controls
-            cc1, cc2, cc3 = st.columns(3)
-            with cc1:
-                chart_interval = st.selectbox(
-                    "Interval",
-                    ["60minute","30minute","15minute","5minute","day"],
-                    index=0,
-                    format_func=lambda x: {
-                        "60minute":"1 Hour","30minute":"30 Min",
-                        "15minute":"15 Min","5minute":"5 Min","day":"Daily"
-                    }.get(x, x)
-                )
-            with cc2:
-                chart_days = st.slider("Days back", 5, 60, 20, 5)
-            with cc3:
-                swing_lb = st.slider("S/R Lookback (candles)", 3, 15, 5, 1)
-
-            sr_cols = st.columns(4)
-            inc_pivot    = sr_cols[0].checkbox("Pivots",     value=True)
-            inc_prev_day = sr_cols[1].checkbox("Prev Day",   value=True)
-            inc_round    = sr_cols[2].checkbox("Round Nos.", value=False)
-            min_touches  = sr_cols[3].slider("Min touches",  1, 5, 2, 1)
-
-            if st.button("📊 Load Charts", type="primary"):
-                with st.spinner(f"Fetching {symbol} + VIX ({chart_interval}, {chart_days}d)…"):
-                    try:
-                        idx_df, vix_df = kite_mgr.get_index_and_vix_data(
-                            symbol, interval=chart_interval, days_back=chart_days)
-
-                        round_int = (si * 2) if si else 100.0
-                        lvls = analyse_levels(
-                            idx_df, spot_price,
-                            swing_lookback=swing_lb,
-                            min_swing_touches=min_touches,
-                            include_pivots=inc_pivot,
-                            include_prev_day=inc_prev_day,
-                            include_round=inc_round,
-                            round_interval=round_int,
-                        )
-                        st.session_state.chart_index_df = idx_df
-                        st.session_state.chart_vix_df   = vix_df
-                        st.session_state.chart_levels   = lvls
-                        st.success(
-                            f"✅ {len(idx_df)} index candles · "
-                            f"{len(vix_df)} VIX candles loaded"
-                        )
-                    except KiteAuthError as e:
-                        st.error(f"🔐 Session expired: {e}\n\nRe-authenticate.")
-                    except KiteDataError as e:
-                        st.error(f"📊 Data error: {e}")
-                    except KiteError as e:
-                        st.error(f"Kite error: {e}")
-                    except Exception as e:
-                        st.error(f"Unexpected error: {e}")
-
-            # Display chart
-            if (st.session_state.chart_index_df is not None
-                    and st.session_state.chart_vix_df is not None
-                    and st.session_state.chart_levels is not None):
-
-                idx_df = st.session_state.chart_index_df
-                vix_df = st.session_state.chart_vix_df
-                lvls   = st.session_state.chart_levels
-
-                interval_label_map = {
-                    "60minute":"1 Hr","30minute":"30 Min",
-                    "15minute":"15 Min","5minute":"5 Min","day":"Daily"
-                }
-                il = interval_label_map.get(chart_interval, chart_interval)
-
-                fig = plot_index_vix_chart(
-                    idx_df, vix_df, symbol, lvls,
-                    spot_price=spot_price, interval_label=il)
-                st.plotly_chart(fig, use_container_width=True)
-
-                # VIX metrics
-                latest_vix   = float(vix_df["close"].iloc[-1])
-                vix_prev     = float(vix_df["close"].iloc[-2]) if len(vix_df)>1 else latest_vix
-                vix_regime   = ("🟢 Calm" if latest_vix<15 else
-                                "🟡 Normal" if latest_vix<20 else
-                                "🟠 Elevated" if latest_vix<25 else
-                                "🔴 High Fear")
-                vm1,vm2,vm3,vm4 = st.columns(4)
-                vm1.metric("India VIX",  f"{latest_vix:.2f}", f"{latest_vix-vix_prev:+.2f}")
-                vm2.metric("VIX Regime", vix_regime)
-                vm3.metric("VIX High",   f"{vix_df['high'].max():.2f}")
-                vm4.metric("VIX Low",    f"{vix_df['low'].min():.2f}")
-
-                # S/R table
-                st.markdown("---")
-                st.subheader("📋 Detected Support & Resistance Levels")
-                tbl = build_levels_table(lvls, spot_price)
-                if not tbl.empty:
-                    def _colour_sr(row):
-                        if "Resistance" in str(row.get("Category","")):
-                            return ["color:#ef4444"]*len(row)
-                        if "Support" in str(row.get("Category","")):
-                            return ["color:#22c55e"]*len(row)
-                        if "Prev Day" in str(row.get("Category","")):
-                            return ["color:#eab308"]*len(row)
-                        if "Pivot" in str(row.get("Category","")):
-                            return ["color:#a855f7"]*len(row)
-                        return [""]*len(row)
-                    st.dataframe(
-                        tbl.style.apply(_colour_sr, axis=1),
-                        use_container_width=True, height=350)
-                else:
-                    st.info("No S/R levels detected. Try reducing 'Min touches' to 1.")
-            else:
-                st.info("Click **📊 Load Charts** to fetch 1-hr data from Kite.")
-
+        st.subheader("📋 Gamma Confusion Matrix & Exposure Overlap")
+    
+        # 1. Logic to define the Current Market State
+        c_gex = gex_df['call_gex'].sum()
+        p_gex = gex_df['put_gex'].sum()
+        n_gex = net_gex
+        
+        call_state = "+ve" if c_gex > 0 else "-ve"
+        put_state = "+ve" if p_gex > 0 else "-ve"
+        net_state = "+ve" if n_gex > 0 else "-ve"
+    
+        # 2. Define the Matrix Data
+        matrix_data = [
+            {"Call G": "+ve", "Put G": "+ve", "Net GEX": "+ve", "Nature": "Ultra-Stable", "Dealer Logic": "Dealers Long both; Volatility suppressed."},
+            {"Call G": "+ve", "Put G": "-ve", "Net GEX": "+ve", "Nature": "Bullish Support", "Dealer Logic": "Long Calls > Short Puts; Market floor exists."},
+            {"Call G": "+ve", "Put G": "-ve", "Net GEX": "-ve", "Nature": "Volatility Trap", "Dealer Logic": "Short Puts dominate; Risk of rapid sell-off."},
+            {"Call G": "-ve", "Put G": "+ve", "Net GEX": "+ve", "Nature": "Bearish Resistance", "Dealer Logic": "Short Calls act as 'Negative Force' capping upside."},
+            {"Call G": "-ve", "Put G": "+ve", "Net GEX": "-ve", "Nature": "The Squeeze", "Dealer Logic": "Short Calls dominate; Breakout triggers 'Melt-up'."},
+            {"Call G": "-ve", "Put G": "-ve", "Net GEX": "-ve", "Nature": "Maximum Chaos", "Dealer Logic": "Short everything; Dealers amplify moves both ways."}
+        ]
+        
+        matrix_df = pd.DataFrame(matrix_data)
+    
+        # 3. Highlight the Active Regime
+        def highlight_active(row):
+            if row['Call G'] == call_state and row['Put G'] == put_state and row['Net GEX'] == net_state:
+                return ['background-color: rgba(255, 165, 0, 0.3)'] * len(row)
+            return [''] * len(row)
+    
+        st.table(matrix_df.style.apply(highlight_active, axis=1))
+    
+        st.markdown("---")
+        
+        # 4. Gamma Overlap Chart (Call vs Put)
+        st.subheader("📊 Gamma Exposure Overlap (Call vs Put)")
+        
+        import plotly.graph_objects as go
+        
+        fig_overlap = go.Figure()
+    
+        # Call Gamma Bar
+        fig_overlap.add_trace(go.Bar(
+            x=gex_df['strike'],
+            y=gex_df['call_gex'],
+            name='Call GEX (Negative Force)',
+            marker_color='#ef4444', # Red for Short Gamma pressure
+            opacity=0.7
+        ))
+    
+        # Put Gamma Bar
+        fig_overlap.add_trace(go.Bar(
+            x=gex_df['strike'],
+            y=gex_df['put_gex'],
+            name='Put GEX (Support/Hedging)',
+            marker_color='#22c55e', # Green for Long Gamma support
+            opacity=0.7
+        ))
+    
+        fig_overlap.update_layout(
+            template="plotly_dark",
+            barmode='overlay',
+            xaxis_title="Strike Price",
+            yaxis_title="GEX (Cr)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis=dict(range=[spot_price * 0.95, spot_price * 1.05]) # Zoomed to ±5%
+        )
+        
+        # Add Spot Line
+        fig_overlap.add_vline(x=spot_price, line_dash="dash", line_color="white", annotation_text=f"Spot: {spot_price}")
+    
+        st.plotly_chart(fig_overlap, use_container_width=True)
+    
+        st.info("""
+        **💡 How to Read:** - **Call GEX (-ve):** Represents the 'Negative Force' where dealers are short calls. High bars here act as resistance.
+        - **Put GEX (+ve):** Represents dealer support. High bars here act as structural price floors.
+        - **Overlap:** Areas where both are high create high-friction zones and possible 'Gamma Explosions' if the net balance flips.
+        """)
     # ── Tab 5: Signals ────────────────────────────────────────────────────────
     with tab5:
         st.subheader("🎯 Intelligent Trade Signals")
