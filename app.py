@@ -1,20 +1,25 @@
 """
-Professional GEX Terminal v3
-Kite Connect v3 · NSE Live · Full Greeks · 
+Professional GEX Terminal v4  —  Live Engine Edition
+=====================================================
+Architecture
+------------
+Every Streamlit rerun is either:
+  (a) user interaction  — normal flow
+  (b) st_autorefresh    — live engine tick
 
-Debug fixes in this version
-----------------------------
-* KiteError / KiteAuthError / KiteDataError displayed to user (not swallowed)
-* set_access_token() returns (bool, str) – handled correctly
-* All kite_mgr calls wrapped in try/except with clear error messages
-* 🔍 Debug panel runs step-by-step test_connection() and shows each result
-* chart_analysis.py correctly placed in modules/
-* Charts Gamma Confusion Matrix & Exposure Overlap
+On a live tick the script runs top-to-bottom but the LIVE ENGINE BLOCK
+at the very top intercepts the rerun and:
+  • every 5 s  → kite.ltp() spot  → recalculate GEX in-memory (no chain call)
+  • every N s  → kite.quote() full chain re-fetch → rebuild gex_df from scratch
+
+All slider/select values that the engine needs (strike_range, risk_free_rate,
+expiry, symbol) are mirrored into session state so the engine can read them
+without re-rendering widgets.
 """
 
 import streamlit as st
 import pandas as pd
-import pytz  # <--- Add this line
+import pytz
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
@@ -54,141 +59,321 @@ except Exception:
     RFR_DEFAULT                    = 0.07
     STRIKE_RANGE_DEFAULT           = 10
 
+IST = pytz.timezone("Asia/Kolkata")
 
-# ── page ─────────────────────────────────────────────────────────────────────
+# ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="GEX Terminal", page_icon="📊",
                    layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
 <style>
-/* remove Streamlit default top padding */
 .block-container{padding-top:0.4rem !important;padding-bottom:0.2rem !important}
-/* compact header */
 .main-header{font-size:1.6rem;font-weight:bold;
   background:linear-gradient(90deg,#1f77b4,#ff7f0e);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
   text-align:center;margin:0;padding:0;line-height:1.2}
 .sub-header{text-align:center;color:#888;font-size:0.76rem;
   margin:0 0 0.2rem 0;padding:0}
-/* thin dividers */
 hr{margin:0.2rem 0 !important;border-color:rgba(49,51,63,0.25) !important}
-/* smaller metric values */
 [data-testid="stMetricValue"]{font-size:1.0rem !important;line-height:1.25 !important}
 [data-testid="stMetricLabel"]{font-size:0.68rem !important;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 [data-testid="stMetricDelta"]{font-size:0.62rem !important}
 div[data-testid="metric-container"]{padding:0.1rem 0.35rem !important}
-/* compact alerts/info */
 .stAlert{padding:0.25rem 0.6rem !important;font-size:0.76rem !important}
-/* live dot */
-.live-dot{display:inline-block;width:8px;height:8px;background:#22c55e;
-  border-radius:50%;margin-right:4px;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-/* tabs */
+
+/* live pulse dot */
+.live-dot{display:inline-block;width:9px;height:9px;background:#22c55e;
+  border-radius:50%;margin-right:5px;animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}
+                 50%{opacity:.25;transform:scale(0.7)}}
+
+/* live status bar */
+.live-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);
+  border-radius:8px;padding:0.35rem 1rem;margin-bottom:0.4rem;
+  font-size:0.78rem;font-family:monospace}
+.live-bar-off{
+  display:flex;align-items:center;justify-content:space-between;
+  background:rgba(100,116,139,0.08);border:1px solid rgba(100,116,139,0.2);
+  border-radius:8px;padding:0.35rem 1rem;margin-bottom:0.4rem;
+  font-size:0.78rem;font-family:monospace;color:#64748b}
+
+/* ticker tape */
+.ticker{
+  font-size:1.1rem;font-weight:700;font-family:monospace;
+  padding:0.15rem 0.5rem;border-radius:4px}
+.tick-up{color:#22c55e}
+.tick-dn{color:#ef4444}
+.tick-flat{color:#94a3b8}
+
 .stTabs [data-baseweb="tab"]{height:34px;background:#f0f2f6;
   border-radius:5px 5px 0 0;padding:4px 13px;font-weight:600;font-size:0.82rem}
 .stTabs [aria-selected="true"]{
   background:linear-gradient(135deg,#667eea,#764ba2);color:white}
-/* tighten column gaps */
 [data-testid="stHorizontalBlock"]{gap:0.4rem !important}
 </style>""", unsafe_allow_html=True)
 
-# ── session state ─────────────────────────────────────────────────────────────
-for k, v in {
-    "data_loaded": False, "options_df": None, "spot_price": None,
-    "spot_ohlc": None, "last_update": None, "last_spot_update": None,
-    "gex_df": None, "gamma_levels": None,
-    "kite_authenticated": False, "kite_manager": None,
-    "lot_size": None, "strike_interval": None,
-    "selected_expiry": None, "selected_symbol": "NIFTY",
-    "chart_index_df": None, "chart_vix_df": None, "chart_levels": None,
-}.items():
+# ═══════════════════════════════════════════════════════════════════════════════
+# SESSION STATE INIT
+# ═══════════════════════════════════════════════════════════════════════════════
+_defaults = {
+    "data_loaded":            False,
+    "options_df":             None,
+    "spot_price":             None,
+    "prev_spot":              None,          # previous tick spot (for Δ arrow)
+    "spot_ohlc":              None,
+    "last_update":            None,          # last full chain fetch time
+    "last_spot_update":       None,
+    "gex_df":                 None,
+    "gamma_levels":           None,
+    "kite_authenticated":     False,
+    "kite_manager":           None,
+    "lot_size":               None,
+    "strike_interval":        None,
+    "selected_expiry":        None,
+    "selected_symbol":        "NIFTY",
+    "chart_index_df":         None,
+    "chart_vix_df":           None,
+    "chart_levels":           None,
+    # live engine
+    "live_mode":              False,
+    "strike_range_val":       STRIKE_RANGE_DEFAULT,
+    "risk_free_rate_val":     RFR_DEFAULT,
+    "chain_refresh_interval": 300,          # seconds between full chain re-fetches
+    "live_error":             None,
+    "chain_error":            None,
+    "live_tick_count":        0,
+    "chain_fetch_count":      0,
+}
+for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-st.markdown('<p class="main-header">📊 Professional GEX Terminal</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Kite Connect v3 · Real-Time Greeks · VIX Chart · Dynamic S/R</p>',
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚡  LIVE ENGINE  — runs on EVERY rerun (both user-triggered and autorefresh)
+# ═══════════════════════════════════════════════════════════════════════════════
+def _live_engine_tick():
+    """
+    Called at the very top of each rerun when live_mode is on and we have data.
+    Two-speed refresh:
+      Fast (every rerun, ~5 s) : spot LTP  → recalculate GEX from stored chain
+      Slow (every N seconds)   : full chain re-fetch → rebuild gex_df from Kite
+    """
+    km  = st.session_state.kite_manager
+    sym = st.session_state.selected_symbol
+    exp = st.session_state.selected_expiry
+    sr  = st.session_state.strike_range_val
+    rfr = st.session_state.risk_free_rate_val
+
+    # ── fast path: spot LTP → recalculate GEX ────────────────────────────────
+    try:
+        new_spot = km.get_spot_ltp(sym)
+        ohlc     = km.get_spot_ohlc(sym)
+
+        if new_spot:
+            # track direction for ticker
+            st.session_state.prev_spot   = st.session_state.spot_price or new_spot
+            st.session_state.spot_price  = new_spot
+            st.session_state.spot_ohlc   = ohlc
+            st.session_state.last_spot_update = datetime.now(IST)
+
+            df_f = filter_strikes(st.session_state.options_df, new_spot, sr)
+            if df_f.empty:
+                df_f = filter_strikes(st.session_state.options_df, new_spot, 15)
+
+            gx = calculate_gex(df_f, new_spot, exp, rfr)
+            gl = find_gamma_levels(gx, new_spot)
+
+            st.session_state.gex_df       = gx
+            st.session_state.gamma_levels = gl
+            st.session_state.live_error   = None
+            st.session_state.live_tick_count += 1
+
+    except KiteAuthError as e:
+        st.session_state.live_error = f"Session expired: {e}"
+        st.session_state.live_mode  = False   # stop live mode on auth failure
+        return
+    except Exception as e:
+        st.session_state.live_error = str(e)
+
+    # ── slow path: full chain re-fetch ────────────────────────────────────────
+    now          = datetime.now(IST)
+    last_chain   = st.session_state.last_update
+    chain_age_s  = (
+        (now - last_chain).total_seconds()
+        if last_chain else 9999
+    )
+    chain_ivl    = st.session_state.chain_refresh_interval
+
+    if chain_age_s >= chain_ivl:
+        try:
+            df, spot = km.get_option_chain(sym, exp, rfr)
+            if df is not None and not df.empty and spot:
+                df_f = filter_strikes(df, spot, sr)
+                gx   = calculate_gex(df_f, spot, exp, rfr)
+                gl   = find_gamma_levels(gx, spot)
+                lot  = get_lot_size(sym, km)
+                si   = get_strike_interval(sym, exp, km)
+                st.session_state.update({
+                    "options_df":        df,
+                    "spot_price":        spot,
+                    "gex_df":            gx,
+                    "gamma_levels":      gl,
+                    "last_update":       now,
+                    "last_spot_update":  now,
+                    "lot_size":          lot,
+                    "strike_interval":   si,
+                    "chain_error":       None,
+                    "chain_fetch_count": st.session_state.chain_fetch_count + 1,
+                })
+        except KiteAuthError as e:
+            st.session_state.chain_error = f"Session expired: {e}"
+            st.session_state.live_mode   = False
+        except Exception as e:
+            st.session_state.chain_error = str(e)
+
+
+# ── trigger autorefresh + run engine ─────────────────────────────────────────
+if (st.session_state.live_mode
+        and st.session_state.kite_authenticated
+        and st.session_state.data_loaded):
+    st_autorefresh(interval=5_000, limit=None, key="live_engine_ar")
+    _live_engine_tick()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE HEADER
+# ═══════════════════════════════════════════════════════════════════════════════
+st.markdown('<p class="main-header">📊 Professional GEX Terminal</p>',
             unsafe_allow_html=True)
+st.markdown(
+    '<p class="sub-header">Kite Connect v3 · Real-Time Greeks · Live Engine · VIX Chart</p>',
+    unsafe_allow_html=True)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ═══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.header("⚙️ Configuration")
-    # ── Data source ───────────────────────────────────────────────────────────
-    st.subheader("📡 Data Source")
-    data_source = "Kite Connect"
+
+    # ── ⚡ LIVE MODE (most prominent control) ──────────────────────────────────
+    st.subheader("⚡ Live Engine")
+    can_go_live = (st.session_state.kite_authenticated
+                   and st.session_state.data_loaded)
+
+    if st.session_state.live_mode:
+        if st.button("🔴 STOP LIVE", type="primary", use_container_width=True):
+            st.session_state.live_mode = False
+            st.rerun()
+        ticks = st.session_state.live_tick_count
+        chains = st.session_state.chain_fetch_count
+        st.caption(f"✅ Running · {ticks} spot ticks · {chains} chain fetches")
+
+        chain_ivl = st.slider(
+            "Chain refresh interval (s)", 60, 600,
+            st.session_state.chain_refresh_interval, 30,
+            key="chain_ivl_slider",
+        )
+        st.session_state.chain_refresh_interval = chain_ivl
+
+        # surface any live errors
+        if st.session_state.live_error:
+            st.error(f"⚠️ Spot: {st.session_state.live_error}")
+        if st.session_state.chain_error:
+            st.warning(f"⚠️ Chain: {st.session_state.chain_error}")
+    else:
+        btn_help = (
+            "Authenticate Kite and fetch option chain first"
+            if not can_go_live else
+            "5 s spot refresh · periodic chain refresh"
+        )
+        if st.button(
+            "🟢 GO LIVE",
+            type="primary",
+            use_container_width=True,
+            disabled=not can_go_live,
+            help=btn_help,
+        ):
+            st.session_state.live_mode        = True
+            st.session_state.live_tick_count  = 0
+            st.session_state.chain_fetch_count = 0
+            st.session_state.live_error       = None
+            st.session_state.chain_error      = None
+            st.rerun()
+
+    st.markdown("---")
 
     # ── Kite auth ─────────────────────────────────────────────────────────────
     st.subheader("🔐 Kite Authentication")
-    
+
     if not st.session_state.kite_authenticated:
-        api_key = st.text_input("API Key", value=KITE_API_KEY, type="password")
+        api_key    = st.text_input("API Key",    value=KITE_API_KEY,    type="password")
         api_secret = st.text_input("API Secret", value=KITE_API_SECRET, type="password")
-        
+
         if api_key and api_secret:
-            km_url = KiteManager(api_key, api_secret)
+            km_url    = KiteManager(api_key, api_secret)
             login_url = km_url.get_login_url()
-            # Direct link to login - removes Step 1/2 instructions
-            st.link_button("🔗 Connect to Kite", login_url, type="primary", use_container_width=True)
-        
+            st.link_button("🔗 Connect to Kite", login_url,
+                           type="primary", use_container_width=True)
+
         req_token = st.text_input("Paste Request Token from URL:")
-        
-        if req_token and st.button("✅ Generate Session", type="primary", use_container_width=True):
+
+        if req_token and st.button("✅ Generate Session", type="primary",
+                                    use_container_width=True):
             if api_key and api_secret:
                 km_temp = KiteManager(api_key, api_secret)
                 ok, msg = km_temp.set_access_token(req_token)
                 if ok:
-                    st.session_state.kite_manager = km_temp
+                    st.session_state.kite_manager       = km_temp
                     st.session_state.kite_authenticated = True
                     st.success("✅ Connected")
                     st.rerun()
                 else:
-                    st.error(f"❌ Error: {msg}")
+                    st.error(f"❌ {msg}")
     else:
         st.success("✅ Kite Connected")
-        if st.button("Disconnect", use_container_width=True):
+        col_d, col_dbg = st.columns(2)
+        if col_d.button("Disconnect", use_container_width=True):
             st.session_state.kite_authenticated = False
-            st.session_state.kite_manager = None
+            st.session_state.kite_manager       = None
+            st.session_state.live_mode          = False
             st.rerun()
 
+        with st.expander("🔍 Debug Connection", expanded=False):
+            st.caption("Tests each Kite API step independently")
+            debug_sym = st.selectbox("Test symbol:", ["NIFTY","BANKNIFTY","FINNIFTY"],
+                                      key="debug_sym")
+            if st.button("▶ Run Diagnostics", key="run_diag"):
+                km_d = st.session_state.kite_manager
+                if km_d:
+                    with st.spinner("Running tests…"):
+                        results = km_d.test_connection(debug_sym)
+                    for step, info in results.items():
+                        icon = "✅" if info["ok"] else "❌"
+                        (st.success if info["ok"] else st.error)(
+                            f"{icon} **{info['label']}** — {info['msg']}")
+                    if not all(v["ok"] for v in results.values()):
+                        st.warning(
+                            "**Common fixes:**\n"
+                            "- Token expires at 6 AM daily → re-authenticate\n"
+                            "- Instruments load takes ~30 s on first call\n"
+                            "- API key must have F&O data permissions"
+                        )
 
-            
-            # ── 🔍 Debug panel ──────────────────────────────────────────────
-            with st.expander("🔍 Debug Connection", expanded=False):
-                st.caption("Tests each Kite API step independently")
-                debug_sym = st.selectbox("Test symbol:", ["NIFTY","BANKNIFTY","FINNIFTY"],
-                                          key="debug_sym")
-                if st.button("▶ Run Diagnostics", key="run_diag"):
-                    km_d = st.session_state.kite_manager
-                    if km_d:
-                        with st.spinner("Running tests…"):
-                            results = km_d.test_connection(debug_sym)
-                        for step, info in results.items():
-                            icon = "✅" if info["ok"] else "❌"
-                            if info["ok"]:
-                                st.success(f"{icon} **{info['label']}** — {info['msg']}")
-                            else:
-                                st.error(f"{icon} **{info['label']}** — {info['msg']}")
-                        if not all(v["ok"] for v in results.values()):
-                            st.warning(
-                                "**Common fixes:**\n"
-                                "- Token expires at 6 AM daily → re-authenticate\n"
-                                "- Use correct redirect URL in Kite app settings\n"
-                                "- API key must have F&O data permissions\n"
-                                "- Instruments load takes ~30 s on first call"
-                            )
-
-                if st.button("🗑 Clear Instrument Cache", key="clear_cache"):
-                    if st.session_state.kite_manager:
-                        st.session_state.kite_manager.invalidate_cache()
-                        st.success("Cache cleared – next fetch will reload from Kite.")
+            if st.button("🗑 Clear Instrument Cache", key="clear_cache"):
+                if st.session_state.kite_manager:
+                    st.session_state.kite_manager.invalidate_cache()
+                    st.success("Cache cleared.")
 
     st.markdown("---")
-    kite_mgr = (st.session_state.kite_manager
-                if data_source == "Kite Connect" else None)
+    kite_mgr = st.session_state.kite_manager
 
     # ── Symbol ────────────────────────────────────────────────────────────────
-    symbol = st.selectbox("📈 Index", ["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY"])
+    symbol = st.selectbox("📈 Index",
+                           ["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY"])
     st.session_state.selected_symbol = symbol
 
     # ── Lot size / strike interval ────────────────────────────────────────────
@@ -203,10 +388,10 @@ with st.sidebar:
     st.session_state.strike_interval = strike_interval
     src_lbl = "🔗 Kite" if kite_mgr else "📋 estimate"
     ca, cb  = st.columns(2)
-    ca.metric("📦 Lot Size",        str(lot_size),              help=src_lbl)
-    cb.metric("📏 Interval",        f"₹{strike_interval:.0f}", help=src_lbl)
+    ca.metric("📦 Lot Size",  str(lot_size),              help=src_lbl)
+    cb.metric("📏 Interval",  f"₹{strike_interval:.0f}", help=src_lbl)
 
-    # ── Expiry type ───────────────────────────────────────────────────────────
+    # ── Expiry ────────────────────────────────────────────────────────────────
     st.markdown("---")
     try:
         sym_has_weekly = has_weekly_expiry(symbol, kite_mgr)
@@ -214,13 +399,12 @@ with st.sidebar:
         sym_has_weekly = has_weekly_expiry(symbol, None)
 
     if sym_has_weekly:
-        et_label   = st.radio("📅 Expiry Type", ["Weekly","Monthly"])
+        et_label    = st.radio("📅 Expiry Type", ["Weekly","Monthly"])
         expiry_type = "weekly" if et_label == "Weekly" else "monthly"
     else:
-        st.info(f"📅 {symbol}: Monthly only (no weekly on NSE)")
+        st.info(f"📅 {symbol}: Monthly only")
         expiry_type = "monthly"
 
-    # ── Expiry selector ───────────────────────────────────────────────────────
     try:
         available_expiries = get_expiries_for_symbol(symbol, kite_mgr, expiry_type)
     except KiteError:
@@ -232,23 +416,29 @@ with st.sidebar:
     expiry_date = st.selectbox(
         "Select Expiry", available_expiries, index=0,
         help="From Kite instruments" if kite_mgr else "Computed from NSE rules")
-    st.caption(f"Source: {'🔗 Kite' if kite_mgr else '📋 NSE calendar'}")
     st.session_state.selected_expiry = expiry_date
 
-    # ── Parameters ────────────────────────────────────────────────────────────
+    # ── Parameters — mirror to session state for live engine ──────────────────
     st.markdown("---")
     st.subheader("📍 Parameters")
-    strike_range   = st.slider("Strike Range (%)", 5, 25, STRIKE_RANGE_DEFAULT, 1)
-    risk_free_rate = st.number_input("Risk-Free Rate (%)", 0.0, 15.0,
-                                      round(RFR_DEFAULT*100,1), 0.1) / 100
+    strike_range = st.slider(
+        "Strike Range (%)", 5, 25, st.session_state.strike_range_val, 1)
+    st.session_state.strike_range_val = strike_range   # live engine reads this
 
-    # ── Spot refresh ──────────────────────────────────────────────────────────
+    risk_free_rate = st.number_input(
+        "Risk-Free Rate (%)", 0.0, 15.0,
+        round(st.session_state.risk_free_rate_val * 100, 1), 0.1
+    ) / 100
+    st.session_state.risk_free_rate_val = risk_free_rate  # live engine reads this
+
+    # ── Manual spot refresh (used when NOT in live mode) ──────────────────────
     st.markdown("---")
     st.subheader("💹 Spot Price")
     sc1, sc2 = st.columns(2)
 
     with sc1:
-        if st.button("🔄 Refresh Spot", use_container_width=True):
+        if st.button("🔄 Refresh Spot", use_container_width=True,
+                     disabled=st.session_state.live_mode):
             with st.spinner("Fetching LTP…"):
                 try:
                     if kite_mgr:
@@ -257,142 +447,114 @@ with st.sidebar:
                     else:
                         new_spot = get_live_spot_price(symbol, "nselib")
                         ohlc     = None
-
                     if new_spot:
+                        st.session_state.prev_spot        = st.session_state.spot_price
                         st.session_state.spot_price       = new_spot
                         st.session_state.spot_ohlc        = ohlc
-                        st.session_state.last_spot_update = datetime.now()
+                        st.session_state.last_spot_update = datetime.now(IST)
                         if (st.session_state.data_loaded
                                 and st.session_state.options_df is not None):
-                            df_f = filter_strikes(st.session_state.options_df,
-                                                  new_spot, strike_range)
-                            gx   = calculate_gex(df_f, new_spot, expiry_date,
-                                                  risk_free_rate)
+                            df_f = filter_strikes(
+                                st.session_state.options_df, new_spot, strike_range)
+                            gx   = calculate_gex(df_f, new_spot, expiry_date, risk_free_rate)
                             st.session_state.gex_df       = gx
                             st.session_state.gamma_levels = find_gamma_levels(gx, new_spot)
                         st.success(f"₹{new_spot:,.2f}")
                     else:
                         st.warning("Spot not available (market closed?)")
-
                 except KiteAuthError as e:
-                    st.error(f"🔐 Session expired: {e}\n\nRe-authenticate in the sidebar.")
+                    st.error(f"🔐 Session expired: {e}")
                 except KiteError as e:
                     st.error(f"Kite error: {e}")
                 except Exception as e:
                     st.error(f"Error: {e}")
-
     with sc2:
-        enable_spot_refresh = st.checkbox("Auto", value=False,
-                                           help="Auto-refresh spot every few seconds")
-    if enable_spot_refresh and kite_mgr:
-        st_autorefresh(interval=SPOT_REFRESH*1000, limit=None, key="spot_ar")
+        if st.session_state.live_mode:
+            st.markdown("🟢 **AUTO**", help="Spot auto-refreshing every 5 s")
+        else:
+            enable_spot_refresh = st.checkbox("Auto", value=False)
+            if enable_spot_refresh and kite_mgr:
+                st_autorefresh(interval=SPOT_REFRESH*1000, limit=None, key="spot_ar")
 
     # ── Option chain fetch ────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("🔄 Option Chain")
-    enable_chain_ar = st.checkbox("Auto-refresh chain", value=False)
-    if enable_chain_ar:
-        ci = st.slider("Interval (s)", 10, 120, CHAIN_REFRESH, 5)
-        st_autorefresh(interval=ci*1000, limit=None, key="chain_ar")
 
     if st.button("📥 Fetch Option Chain", type="primary", use_container_width=True):
-        src = ("kite"   if data_source == "Kite Connect" else
-               "nselib" if data_source == "NSE Live (nselib)" else "sample")
         with st.spinner(f"Fetching {symbol} chain for {expiry_date}…"):
             df, spot = None, None
             fetch_ok = False
 
-            # ── Kite ─────────────────────────────────────────────────────────
-            if src == "kite":
-                if not kite_mgr:
-                    st.error("Kite not connected. Select Kite Connect and authenticate.")
-                else:
-                    try:
-                        df, spot = kite_mgr.get_option_chain(
-                            symbol, expiry_date, risk_free_rate)
-                        fetch_ok = True
-                        st.success(f"✅ {len(df):,} contracts · spot ₹{spot:,.2f}")
-                    except KiteAuthError as e:
-                        st.error(
-                            f"🔐 **Session expired or invalid:**\n{e}\n\n"
-                            "**Fix:** Disconnect and re-authenticate. "
-                            "Kite tokens reset at 6 AM daily.")
-                    except KiteDataError as e:
-                        st.error(f"📊 **Data error:**\n{e}")
-                        st.info("Run **🔍 Debug Connection** in the sidebar to diagnose.")
-                    except KiteError as e:
-                        st.error(f"Kite error: {e}")
-                    except Exception as e:
-                        st.error(f"Unexpected error: {e}")
-
-            # ── NSE ──────────────────────────────────────────────────────────
-            elif src == "nselib":
-                try:
-                    df, spot = fetch_option_chain(
-                        symbol, expiry_date, "nselib", None, risk_free_rate)
-                    fetch_ok = df is not None and not df.empty and spot
-                    if not fetch_ok:
-                        st.warning("NSE live fetch returned no data (rate-limited or closed).")
-                except Exception as e:
-                    st.error(f"NSE error: {e}")
-
-            # ── Sample ───────────────────────────────────────────────────────
+            if not kite_mgr:
+                st.error("Kite not connected. Authenticate first.")
             else:
                 try:
-                    live_spot = get_live_spot_price(symbol, "nselib")
-                    df, spot  = generate_sample_data(symbol, live_spot,
-                                                      expiry_date, kite_mgr)
+                    df, spot = kite_mgr.get_option_chain(
+                        symbol, expiry_date, risk_free_rate)
+                    fetch_ok = True
+                    st.success(f"✅ {len(df):,} contracts · spot ₹{spot:,.2f}")
+                except KiteAuthError as e:
+                    st.error(f"🔐 Session expired:\n{e}")
+                except KiteDataError as e:
+                    st.error(f"📊 Data error:\n{e}")
+                except KiteError as e:
+                    st.error(f"Kite error: {e}")
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
+
+            if not fetch_ok and df is None:
+                st.warning("⚠️ Falling back to sample data.")
+                try:
+                    from modules.utils import get_fallback_spot
+                    live_spot = get_live_spot_price(symbol, "nselib") or get_fallback_spot(symbol)
+                    df, spot  = generate_sample_data(symbol, live_spot, expiry_date, kite_mgr)
                     fetch_ok  = True
                     st.info(f"📊 Sample data · spot ₹{spot:,.2f}")
                 except Exception as e:
-                    st.error(f"Sample data error: {e}")
-
-            # Fallback to sample if live failed
-            if not fetch_ok and src != "sample" and df is None:
-                st.warning("⚠️ Falling back to sample data.")
-                try:
-                    live_spot = get_live_spot_price(symbol, "nselib")
-                    df, spot  = generate_sample_data(symbol, live_spot,
-                                                      expiry_date, kite_mgr)
-                except Exception as e:
                     st.error(f"Sample fallback failed: {e}")
 
-            # Store + calculate
             if df is not None and not df.empty and spot:
                 df_f = filter_strikes(df, spot, strike_range)
                 if df_f.empty:
-                    st.warning(f"No strikes within ±{strike_range}% – widening to ±15%.")
                     df_f = filter_strikes(df, spot, 15)
+                    st.warning("Widened strike range to ±15%.")
                 try:
-                    gx   = calculate_gex(df_f, spot, expiry_date, risk_free_rate)
-                    gl   = find_gamma_levels(gx, spot)
+                    gx  = calculate_gex(df_f, spot, expiry_date, risk_free_rate)
+                    gl  = find_gamma_levels(gx, spot)
+                    now = datetime.now(IST)
                     st.session_state.update({
-                        "options_df": df, "spot_price": spot,
-                        "gex_df": gx, "gamma_levels": gl,
-                        "data_loaded": True, "last_update": datetime.now(),
-                        "last_spot_update": datetime.now(),
-                        "lot_size":       get_lot_size(symbol, kite_mgr if fetch_ok else None),
-                        "strike_interval":get_strike_interval(symbol, expiry_date,
-                                                               kite_mgr if fetch_ok else None),
+                        "options_df":         df,
+                        "spot_price":         spot,
+                        "prev_spot":          spot,
+                        "gex_df":             gx,
+                        "gamma_levels":       gl,
+                        "data_loaded":        True,
+                        "last_update":        now,
+                        "last_spot_update":   now,
+                        "lot_size":           get_lot_size(symbol, kite_mgr if fetch_ok else None),
+                        "strike_interval":    get_strike_interval(symbol, expiry_date,
+                                                                   kite_mgr if fetch_ok else None),
+                        "live_tick_count":    0,
+                        "chain_fetch_count":  0,
+                        "live_error":         None,
+                        "chain_error":        None,
                     })
                 except Exception as e:
                     st.error(f"GEX calculation error: {e}")
 
-    # ── Status ────────────────────────────────────────────────────────────────
+    # ── Sidebar status ────────────────────────────────────────────────────────
     if st.session_state.data_loaded:
         st.markdown("---")
-        st.markdown(f'<span class="live-dot"></span>**{symbol}**', unsafe_allow_html=True)
+        live_dot = '<span class="live-dot"></span>' if st.session_state.live_mode else "🔵 "
+        st.markdown(f'{live_dot}**{symbol}**', unsafe_allow_html=True)
         if st.session_state.spot_price:
             st.metric("Spot", f"₹{st.session_state.spot_price:,.2f}")
         st.caption(f"📅 {st.session_state.selected_expiry}")
         st.caption(f"📦 Lot {st.session_state.lot_size} · 📏 ₹{st.session_state.strike_interval:.0f}")
         if st.session_state.last_update:
-            ist_chain = st.session_state.last_update.astimezone(pytz.timezone('Asia/Kolkata'))
-            st.caption(f"🕐 Chain: {ist_chain.strftime('%H:%M:%S')}")
+            st.caption(f"📊 Chain: {st.session_state.last_update.strftime('%H:%M:%S')}")
         if st.session_state.last_spot_update:
-            ist_spot = st.session_state.last_spot_update.astimezone(pytz.timezone('Asia/Kolkata'))
-            st.caption(f"💹 Spot: {ist_spot.strftime('%H:%M:%S')}")
-        
+            st.caption(f"💹 Spot: {st.session_state.last_spot_update.strftime('%H:%M:%S')}")
         try:
             mkt = get_market_status()
             e   = "🟢" if "Open" in mkt.get("market_state","") else "🔴"
@@ -400,63 +562,107 @@ with st.sidebar:
         except Exception:
             pass
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAIN CONTENT
 # ═══════════════════════════════════════════════════════════════════════════════
 if st.session_state.data_loaded and st.session_state.gex_df is not None:
-    st.markdown("---")   # single thin line below header
+
     spot_price   = st.session_state.spot_price
+    prev_spot    = st.session_state.prev_spot or spot_price
     gex_df       = st.session_state.gex_df
     gamma_levels = st.session_state.gamma_levels
     lot_size     = st.session_state.lot_size
     si           = st.session_state.strike_interval
+    symbol       = st.session_state.selected_symbol
 
-    pcr               = gamma_levels.get("pcr", 1.0)
-    max_pain          = gamma_levels.get("max_pain", spot_price)
-    gamma_flip        = gamma_levels.get("gamma_flip", spot_price)
-    net_gex           = gamma_levels.get("total_gex", 0)
-    max_call_oi_strike= gamma_levels.get("max_call_oi_strike", spot_price)
-    max_put_oi_strike = gamma_levels.get("max_put_oi_strike", spot_price)
+    pcr                = gamma_levels.get("pcr", 1.0)
+    max_pain           = gamma_levels.get("max_pain", spot_price)
+    gamma_flip         = gamma_levels.get("gamma_flip", spot_price)
+    net_gex            = gamma_levels.get("total_gex", 0)
+    max_call_oi_strike = gamma_levels.get("max_call_oi_strike", spot_price)
+    max_put_oi_strike  = gamma_levels.get("max_put_oi_strike", spot_price)
 
-    # ── All metrics in one compact block (no dividers between rows) ───────────
+    # ── ⚡ LIVE STATUS BAR ────────────────────────────────────────────────────
+    spot_delta   = spot_price - prev_spot
+    spot_delta_pct = (spot_delta / prev_spot * 100) if prev_spot else 0
+    tick_arrow   = "▲" if spot_delta > 0 else "▼" if spot_delta < 0 else "●"
+    tick_class   = "tick-up" if spot_delta > 0 else "tick-dn" if spot_delta < 0 else "tick-flat"
+
+    now_ist = datetime.now(IST)
+    chain_age_s = int((now_ist - st.session_state.last_update).total_seconds()) \
+                  if st.session_state.last_update else 0
+    spot_age_s  = int((now_ist - st.session_state.last_spot_update).total_seconds()) \
+                  if st.session_state.last_spot_update else 0
+
+    chain_ivl   = st.session_state.chain_refresh_interval
+    chain_eta   = max(0, chain_ivl - chain_age_s)
+
+    if st.session_state.live_mode:
+        bar_class = "live-bar"
+        mode_tag  = '<span class="live-dot"></span><b>LIVE</b>'
+    else:
+        bar_class = "live-bar-off"
+        mode_tag  = "⏸ PAUSED"
+
+    st.markdown(f"""
+<div class="{bar_class}">
+  <span>{mode_tag}&nbsp;&nbsp;
+    <span class="ticker {tick_class}">
+      {symbol} &nbsp; ₹{spot_price:,.2f} &nbsp; {tick_arrow} {abs(spot_delta):,.2f}
+      ({spot_delta_pct:+.2f}%)
+    </span>
+  </span>
+  <span>
+    Spot age: <b>{spot_age_s}s</b> &nbsp;|&nbsp;
+    Chain age: <b>{chain_age_s}s</b> &nbsp;|&nbsp;
+    Next chain: <b>{chain_eta}s</b> &nbsp;|&nbsp;
+    Ticks: <b>{st.session_state.live_tick_count}</b>
+  </span>
+</div>""", unsafe_allow_html=True)
+
+    # surface live errors inline (non-blocking)
+    if st.session_state.live_error:
+        st.error(f"⚠️ Live spot error: {st.session_state.live_error}",
+                 icon="⚡")
+    if st.session_state.chain_error:
+        st.warning(f"⚠️ Chain refresh error: {st.session_state.chain_error}")
+
+    # ── metrics rows ──────────────────────────────────────────────────────────
     ohlc = st.session_state.spot_ohlc or {}
 
-    # Row 1: OHLC + PCR + Max Pain + Gamma Flip + GEX Regime in one 9-col row
     m1,m2,m3,m4,m5,m6,m7,m8,m9 = st.columns(9)
-    m1.metric("💰 Spot",        f"₹{spot_price:,.0f}")
-    m2.metric("Open",           f"₹{ohlc['open']:,.0f}"  if ohlc else "—")
-    m3.metric("High",           f"₹{ohlc['high']:,.0f}"  if ohlc else "—")
-    m4.metric("Low",            f"₹{ohlc['low']:,.0f}"   if ohlc else "—")
-    m5.metric("Prev",           f"₹{ohlc['close']:,.0f}" if ohlc else "—")
+    spot_delta_disp = f"{spot_delta:+.1f}" if spot_delta != 0 else None
+    m1.metric("💰 Spot",       f"₹{spot_price:,.0f}", delta=spot_delta_disp)
+    m2.metric("Open",          f"₹{ohlc['open']:,.0f}"  if ohlc else "—")
+    m3.metric("High",          f"₹{ohlc['high']:,.0f}"  if ohlc else "—")
+    m4.metric("Low",           f"₹{ohlc['low']:,.0f}"   if ohlc else "—")
+    m5.metric("Prev",          f"₹{ohlc['close']:,.0f}" if ohlc else "—")
     pcr_icon = "🐻" if pcr>1.2 else "🐂" if pcr<0.8 else "➡️"
-    m6.metric(f"{pcr_icon} PCR",f"{pcr:.3f}")
-    m7.metric("🎯 Max Pain",    f"₹{max_pain:,.0f}",  delta=f"{max_pain -spot_price:+.0f}")
-    m8.metric("🔄 Gamma Flip",  f"₹{gamma_flip:,.0f}",delta=f"{gamma_flip-spot_price:+.0f}")
-    m9.metric("📊 Regime",      "🟢 +GEX" if net_gex>0 else "🔴 -GEX")
+    m6.metric(f"{pcr_icon} PCR", f"{pcr:.3f}")
+    m7.metric("🎯 Max Pain",   f"₹{max_pain:,.0f}",
+              delta=f"{max_pain - spot_price:+.0f}")
+    m8.metric("🔄 Gamma Flip", f"₹{gamma_flip:,.0f}",
+              delta=f"{gamma_flip - spot_price:+.0f}")
+    m9.metric("📊 Regime",     "🟢 +GEX" if net_gex>0 else "🔴 -GEX")
 
-    # Row 2: Call GEX + Put GEX + Net GEX + Lot/Interval + OI + Walls
-    n1, n2, n3, n4, n5, n6, n7, n8 = st.columns(8)
-    n1.metric("🔴 Call GEX",         format_number(gex_df['call_gex'].sum()))
-    n2.metric("🟢 Put GEX",          format_number(gex_df['put_gex'].sum()))
-    n3.metric("💹 Net GEX",          format_number(net_gex))
-    # Main structural metrics
-    n4.metric("📦 Lot / Interval",   f"{lot_size} / ₹{si:.0f}")
-    n5.metric("📈 Call OI",          f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
-    n6.metric("📉 Put OI",           f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
-    
-    # Support/Resistance Walls
-    n7.metric("🚧 Call Wall",        f"₹{max_call_oi_strike:,.0f}")
-    n8.metric("🛡️ Put Wall",         f"₹{max_put_oi_strike:,.0f}")
-    
-    
-    # ── Tabs ──────────────────────────────────────────────────────────────────
+    n1,n2,n3,n4,n5,n6,n7,n8 = st.columns(8)
+    n1.metric("🔴 Call GEX",        format_number(gex_df['call_gex'].sum()))
+    n2.metric("🟢 Put GEX",         format_number(gex_df['put_gex'].sum()))
+    n3.metric("💹 Net GEX",         format_number(net_gex))
+    n4.metric("📦 Lot / Interval",  f"{lot_size} / ₹{si:.0f}")
+    n5.metric("📈 Call OI",         f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
+    n6.metric("📉 Put OI",          f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
+    n7.metric("🚧 Call Wall",       f"₹{max_call_oi_strike:,.0f}")
+    n8.metric("🛡️ Put Wall",        f"₹{max_put_oi_strike:,.0f}")
+
+    # ── tabs ──────────────────────────────────────────────────────────────────
     st.markdown("---")
     tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
         "📊 GEX","📈 OI & Volume","🎲 Greeks",
         "📉 Charts","🎯 Signals","📋 Chain","ℹ️ Guide",
     ])
 
-    # ── Tab 1: GEX ────────────────────────────────────────────────────────────
     with tab1:
         st.subheader("Gamma Exposure Profile")
         st.plotly_chart(plot_gex_profile(gex_df, spot_price, gamma_levels),
@@ -482,11 +688,11 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             st.write(f"**Above Spot:** {format_number(gamma_levels.get('net_gex_above_spot',0))}")
             st.write(f"**Below Spot:** {format_number(gamma_levels.get('net_gex_below_spot',0))}")
         st.markdown("---")
-        st.subheader("Net GEX vs Spot Movement")
-        st.plotly_chart(plot_spot_gex_levels(gex_df,spot_price,gamma_levels,500),
-                        use_container_width=True)
+        st.subheader("Cumulative GEX Profile — Dealer Hedging Pressure")
+        st.plotly_chart(
+            plot_spot_gex_levels(gex_df, spot_price, gamma_levels, 500),
+            use_container_width=True)
 
-    # ── Tab 2: OI & Volume ───────────────────────────────────────────────────
     with tab2:
         st.subheader("Open Interest & Volume Analysis")
         st.plotly_chart(plot_oi_analysis(gex_df, spot_price), use_container_width=True)
@@ -505,7 +711,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         v2.metric("Put Volume",  f"{pv:,.0f}")
         v3.metric("Volume PCR",  f"{pv/cv:.3f}" if cv>0 else "—")
 
-    # ── Tab 3: Greeks ─────────────────────────────────────────────────────────
     with tab3:
         st.subheader("Greeks Analysis")
         greek = st.selectbox("Greek:", ["Gamma","Delta","Vega","Theta","Rho"])
@@ -535,88 +740,60 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         e3.metric("νEX", f"{gex_df['total_vex'].sum():,.0f}")
         e4.metric("ΘEX/day", format_number(gex_df["total_tex"].sum()))
 
-    # ── Tab 4: Charts ─────────────────────────────────────────────────────────
-    # -- Tab 4: Charts & Matrix --------------------------------------------------------
     with tab4:
+        import plotly.graph_objects as _go
+
         st.subheader("📋 Gamma Confusion Matrix & Exposure Overlap")
-    
-        # 1. Logic to define the Current Market State
         c_gex = gex_df['call_gex'].sum()
         p_gex = gex_df['put_gex'].sum()
-        n_gex = net_gex
-        
         call_state = "+ve" if c_gex > 0 else "-ve"
-        put_state = "+ve" if p_gex > 0 else "-ve"
-        net_state = "+ve" if n_gex > 0 else "-ve"
-    
-        # 2. Define the Matrix Data
+        put_state  = "+ve" if p_gex > 0 else "-ve"
+        net_state  = "+ve" if net_gex > 0 else "-ve"
+
         matrix_data = [
-            {"Call G": "+ve", "Put G": "+ve", "Net GEX": "+ve", "Nature": "Ultra-Stable", "Dealer Logic": "Dealers Long both; Volatility suppressed."},
-            {"Call G": "+ve", "Put G": "-ve", "Net GEX": "+ve", "Nature": "Bullish Support", "Dealer Logic": "Long Calls > Short Puts; Market floor exists."},
-            {"Call G": "+ve", "Put G": "-ve", "Net GEX": "-ve", "Nature": "Volatility Trap", "Dealer Logic": "Short Puts dominate; Risk of rapid sell-off."},
-            {"Call G": "-ve", "Put G": "+ve", "Net GEX": "+ve", "Nature": "Bearish Resistance", "Dealer Logic": "Short Calls act as 'Negative Force' capping upside."},
-            {"Call G": "-ve", "Put G": "+ve", "Net GEX": "-ve", "Nature": "The Squeeze", "Dealer Logic": "Short Calls dominate; Breakout triggers 'Melt-up'."},
-            {"Call G": "-ve", "Put G": "-ve", "Net GEX": "-ve", "Nature": "Maximum Chaos", "Dealer Logic": "Short everything; Dealers amplify moves both ways."}
+            {"Call G":"+ve","Put G":"+ve","Net GEX":"+ve","Nature":"Ultra-Stable",
+             "Dealer Logic":"Dealers Long both; Volatility suppressed."},
+            {"Call G":"+ve","Put G":"-ve","Net GEX":"+ve","Nature":"Bullish Support",
+             "Dealer Logic":"Long Calls > Short Puts; Market floor exists."},
+            {"Call G":"+ve","Put G":"-ve","Net GEX":"-ve","Nature":"Volatility Trap",
+             "Dealer Logic":"Short Puts dominate; Risk of rapid sell-off."},
+            {"Call G":"-ve","Put G":"+ve","Net GEX":"+ve","Nature":"Bearish Resistance",
+             "Dealer Logic":"Short Calls act as ceiling capping upside."},
+            {"Call G":"-ve","Put G":"+ve","Net GEX":"-ve","Nature":"The Squeeze",
+             "Dealer Logic":"Short Calls dominate; Breakout triggers Melt-up."},
+            {"Call G":"-ve","Put G":"-ve","Net GEX":"-ve","Nature":"Maximum Chaos",
+             "Dealer Logic":"Short everything; Dealers amplify moves both ways."},
         ]
-        
         matrix_df = pd.DataFrame(matrix_data)
-    
-        # 3. Highlight the Active Regime
+
         def highlight_active(row):
-            if row['Call G'] == call_state and row['Put G'] == put_state and row['Net GEX'] == net_state:
-                return ['background-color: rgba(255, 165, 0, 0.3)'] * len(row)
+            if (row['Call G'] == call_state
+                    and row['Put G'] == put_state
+                    and row['Net GEX'] == net_state):
+                return ['background-color: rgba(255,165,0,0.3)'] * len(row)
             return [''] * len(row)
-    
+
         st.table(matrix_df.style.apply(highlight_active, axis=1))
-    
         st.markdown("---")
-        
-        # 4. Gamma Overlap Chart (Call vs Put)
+
         st.subheader("📊 Gamma Exposure Overlap (Call vs Put)")
-        
-        import plotly.graph_objects as go
-        
-        fig_overlap = go.Figure()
-    
-        # Call Gamma Bar
-        fig_overlap.add_trace(go.Bar(
-            x=gex_df['strike'],
-            y=gex_df['call_gex'],
-            name='Call GEX (Negative Force)',
-            marker_color='#ef4444', # Red for Short Gamma pressure
-            opacity=0.7
-        ))
-    
-        # Put Gamma Bar
-        fig_overlap.add_trace(go.Bar(
-            x=gex_df['strike'],
-            y=gex_df['put_gex'],
-            name='Put GEX (Support/Hedging)',
-            marker_color='#22c55e', # Green for Long Gamma support
-            opacity=0.7
-        ))
-    
+        fig_overlap = _go.Figure()
+        fig_overlap.add_trace(_go.Bar(
+            x=gex_df['strike'], y=gex_df['call_gex'],
+            name='Call GEX', marker_color='#ef4444', opacity=0.7))
+        fig_overlap.add_trace(_go.Bar(
+            x=gex_df['strike'], y=gex_df['put_gex'],
+            name='Put GEX', marker_color='#22c55e', opacity=0.7))
         fig_overlap.update_layout(
-            template="plotly_dark",
-            barmode='overlay',
-            xaxis_title="Strike Price",
-            yaxis_title="GEX (Cr)",
+            template="plotly_dark", barmode='overlay',
+            xaxis_title="Strike Price", yaxis_title="GEX (Cr)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=20, r=20, t=40, b=20),
-            xaxis=dict(range=[spot_price * 0.95, spot_price * 1.05]) # Zoomed to ±5%
-        )
-        
-        # Add Spot Line
-        fig_overlap.add_vline(x=spot_price, line_dash="dash", line_color="black", annotation_text=f"Spot: {spot_price}")
-    
+            margin=dict(l=20,r=20,t=40,b=20),
+            xaxis=dict(range=[spot_price*0.95, spot_price*1.05]))
+        fig_overlap.add_vline(x=spot_price, line_dash="dash", line_color="white",
+                              annotation_text=f"Spot: {spot_price:,.0f}")
         st.plotly_chart(fig_overlap, use_container_width=True)
-    
-        st.info("""
-        **💡 How to Read:** - **Call GEX (-ve):** Represents the 'Negative Force' where dealers are short calls. High bars here act as resistance.
-        - **Put GEX (+ve):** Represents dealer support. High bars here act as structural price floors.
-        - **Overlap:** Areas where both are high create high-friction zones and possible 'Gamma Explosions' if the net balance flips.
-        """)
-    # ── Tab 5: Signals ────────────────────────────────────────────────────────
+
     with tab5:
         st.subheader("🎯 Intelligent Trade Signals")
         recs = generate_trade_recommendations(gex_df, spot_price, gamma_levels)
@@ -639,12 +816,9 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                 st.success("✅ Positive Gamma – range-bound, stabilising")
             else:
                 st.warning("⚠️ Negative Gamma – trending, volatile")
-            if pcr > 1.2:
-                st.error("🐻 Bearish PCR")
-            elif pcr < 0.8:
-                st.error("🐂 Bullish PCR")
-            else:
-                st.info("➡️ Neutral PCR")
+            if pcr > 1.2:   st.error("🐻 Bearish PCR")
+            elif pcr < 0.8: st.error("🐂 Bullish PCR")
+            else:            st.info("➡️ Neutral PCR")
         with ra2:
             st.markdown("##### Key Levels")
             st.write(f"**Max Pain:**   ₹{max_pain:,.0f}")
@@ -652,7 +826,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             st.write(f"**Call Wall:**  ₹{max_call_oi_strike:,.0f}")
             st.write(f"**Put Wall:**   ₹{max_put_oi_strike:,.0f}")
 
-    # ── Tab 6: Chain ──────────────────────────────────────────────────────────
     with tab6:
         st.subheader("Options Chain with Greeks")
         cols_ord = [
@@ -669,43 +842,28 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "P-IV%","P-LTP","P-Vol","P-OI",
         ][:len(disp.columns)]
 
-        atm_strikes = (gex_df.iloc[(gex_df["strike"]-spot_price).abs()
-                        .argsort()[:3]]["strike"].values)
+        atm_strikes = (gex_df.iloc[
+            (gex_df["strike"]-spot_price).abs().argsort()[:3]
+        ]["strike"].values)
 
         def _hl(row):
-            # Initialize with empty strings
             styles = [""] * len(row)
             strike = row["Strike"]
-            
-            # Calculate 3% range boundaries
-            lower_bound = spot_price * 0.97
-            upper_bound = spot_price * 1.03
-            is_in_range = lower_bound <= strike <= upper_bound
-
-            # 1. Call side logic
+            lo, hi = spot_price * 0.97, spot_price * 1.03
+            in_range = lo <= strike <= hi
             for i, col in enumerate(disp.columns):
                 if col.startswith("C-"):
-                    # Highlight Yellow if Premium < 10 AND strike is within +/- 3% range
-                    if col == "C-LTP" and row["C-LTP"] < 10 and is_in_range:
-                        styles[i] = "background-color: rgba(255, 255, 0, 0.6); color: black; font-weight: bold"
-                    # Else fall back to ITM Green
+                    if col == "C-LTP" and row["C-LTP"] < 10 and in_range:
+                        styles[i] = "background-color:rgba(255,255,0,0.6);color:black;font-weight:bold"
                     elif strike < spot_price:
-                        styles[i] = "background-color: rgba(34, 197, 94, 0.15)"
-            
-            # 2. Put side logic
-            for i, col in enumerate(disp.columns):
+                        styles[i] = "background-color:rgba(34,197,94,0.15)"
                 if col.startswith("P-"):
-                    # Highlight Yellow if Premium < 10 AND strike is within +/- 3% range
-                    if col == "P-LTP" and row["P-LTP"] < 10 and is_in_range:
-                        styles[i] = "background-color: rgba(255, 255, 0, 0.6); color: black; font-weight: bold"
-                    # Else fall back to ITM Red
+                    if col == "P-LTP" and row["P-LTP"] < 10 and in_range:
+                        styles[i] = "background-color:rgba(255,255,0,0.6);color:black;font-weight:bold"
                     elif strike > spot_price:
-                        styles[i] = "background-color: rgba(239, 68, 68, 0.15)"
-
-            # 3. ATM Highlight (Orange overlay on Strike column)
+                        styles[i] = "background-color:rgba(239,68,68,0.15)"
             if strike in atm_strikes:
-                styles[0] = "background-color: rgba(255, 165, 0, 0.4); font-weight: bold"
-                
+                styles[0] = "background-color:rgba(255,165,0,0.4);font-weight:bold"
             return styles
 
         fmt = {
@@ -716,73 +874,54 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "C-ν":"{:.4f}","P-ν":"{:.4f}","C-Θ":"{:.2f}","P-Θ":"{:.2f}",
         }
         vf = {k:v for k,v in fmt.items() if k in disp.columns}
-        
         st.dataframe(disp.style.apply(_hl, axis=1).format(vf),
                      height=500, use_container_width=True)
-        
-        # Ensure download timestamp is also in IST
-        ist_now = datetime.now(pytz.timezone('Asia/Kolkata'))
+        ist_now = datetime.now(IST)
         st.download_button(
             "📥 Download CSV", gex_df.to_csv(index=False),
             file_name=f"gex_{symbol}_{st.session_state.selected_expiry}_"
                       f"{ist_now.strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv")
-        
-    # ── Tab 7: Guide ──────────────────────────────────────────────────────────
+
     with tab7:
         st.subheader("ℹ️ Guide")
         st.markdown(f"""
-### Expiry Calendar (NSE – May 2026)
-| Index | Weekly / Monthly | Day |
-|-------|--------|-----|
-| NIFTY | ✅ Yes / ✅ Yes  | Tuesday | Last Tuesay |
-| BANKNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
-| FINNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
-| MIDCPNIFTY | ❌ No / ✅ Yes  | Last Tuesday |
+### ⚡ Live Engine — How it works
+
+| Layer | Interval | What happens |
+|-------|----------|--------------|
+| **Spot tick** | every 5 s | `kite.ltp()` → new spot → recalculate GEX from stored chain (instant) |
+| **Chain refresh** | configurable (60–600 s) | `kite.quote()` → full chain re-fetch → rebuild GEX from scratch |
+
+**Why two speeds?**  
+A full chain fetch hits 500+ Kite quote endpoints in chunks.  
+A spot LTP call is a single lightweight request.  
+GEX levels shift when OI changes (slowly); GEX *magnitude* shifts when spot moves (every tick).
+
+### Expiry Calendar (NSE)
+| Index | Weekly | Expiry Day |
+|-------|--------|------------|
+| NIFTY | ✅ | Tuesday |
+| BANKNIFTY | ❌ | Last Tuesday |
+| FINNIFTY | ❌ | Last Tuesday |
+| MIDCPNIFTY | ❌ | Last Tuesday |
 
 ### Debug: Why is Kite fetch failing?
-1. **Token expired** – Kite tokens reset at **6:00 AM daily**. Reconnect each morning.
-2. **Run 🔍 Debug Connection** in the sidebar – it tests session, LTP, instruments, quote step by step.
-3. **Instrument cache** – if the cache is stale, click "🗑 Clear Instrument Cache" and retry.
-4. **Market closed** – `/quote` may return 0 OI / LTP outside trading hours. The terminal still works but GEX may show zeros.
+1. Token expires at **6:00 AM daily** — reconnect each morning
+2. Run 🔍 Debug Connection in sidebar
+3. Clear Instrument Cache and retry if stale
+4. Market closed → `/quote` may return 0 OI / LTP
 
-### The Core First-Order Greeks
-1. Delta (\(\Delta \)): Measures the expected change in option price per $1.00 move in the underlying asset.
-2. Theta (\(\Theta \)): Quantifies the daily rate of time decay affecting the option's extrinsic value.
-3. Vega (\(\nu \)): Measures price sensitivity to a 1% change in the underlying asset's implied volatility (IV).
-4. Rho : Measures sensitivity to a 1% change in the risk-free interest rate.
-5. Gamma (\(\Gamma \)): Tracks the acceleration of Delta per $1.00 move in the underlying asset price.
-
-### Charts Tab
-Requires Kite Connect. Fetches historical OHLCV via `kite.historical_data()`.
-- **INDIA VIX** instrument token: 264969 (stable NSE-assigned)
-- VIX zones: Calm (<12) · Low (<15) · Normal (<20) · Elevated (<25) · High Fear (<35)
-
-### IV Calculation
-Kite does not provide IV. Terminal back-solves from LTP using Brent's method on Black-Scholes.
-
----
 ⚠️ Educational only. Not financial advice.
         """)
 
-# ─── Welcome screen ───────────────────────────────────────────────────────────
+# ── welcome screen ────────────────────────────────────────────────────────────
 else:
-    st.info("👈 Authenticate Kite / select data source, then click **📥 Fetch Option Chain**.")
-    st.markdown("""
-| Feature | Detail |
-|---------|--------|
-| Spot refresh | `/quote/ltp` – fast, independent of chain |
-| Expiries | From Kite NFO instruments (holiday-aware) |
-| Lot size & interval | From Kite instruments |
-| BANKNIFTY | Monthly-only on NSE |
-| Charts | Gamma Confusion Matrix & Exposure Overlap |
-| Debug | 🔍 panel tests session → LTP → instruments → quote |
-    """)
-
+    st.info("👈 Authenticate Kite, fetch option chain, then click **🟢 GO LIVE**.")
     c1,c2 = st.columns(2)
     for col, sym, grad in [
-        (c1,"NIFTY",    "linear-gradient(135deg,#667eea,#764ba2)"),
-        (c2,"BANKNIFTY","linear-gradient(135deg,#f093fb,#f5576c)"),
+        (c1,"NIFTY",     "linear-gradient(135deg,#667eea,#764ba2)"),
+        (c2,"BANKNIFTY", "linear-gradient(135deg,#f093fb,#f5576c)"),
     ]:
         with col:
             try:
@@ -812,13 +951,11 @@ else:
     except Exception:
         pass
 
-# ─── Footer ───────────────────────────────────────────────────────────────────
+# ── footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#888;padding:1rem'>
-  <b>Professional GEX Terminal v3</b><br>
-  Kite Connect v3 · /quote/ltp spot · /quote chain · historical_data charts<br>
-  <span style='font-size:.75rem'>
-    ⚠️ Educational only. Not financial advice. Trade at your own risk.
-  </span>
+  <b>Professional GEX Terminal v4 — Live Engine Edition</b><br>
+  5 s spot ticks · Configurable chain refresh · Kite Connect v3<br>
+  <span style='font-size:.75rem'>⚠️ Educational only. Not financial advice.</span>
 </div>""", unsafe_allow_html=True)
