@@ -422,7 +422,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📍 Parameters")
     strike_range = st.slider(
-        "Strike Range (%)", 5, 25, st.session_state.strike_range_val, 1)
+        "Strike Range (%)", 5, 10, st.session_state.strike_range_val, 1)
     st.session_state.strike_range_val = strike_range   # live engine reads this
 
     risk_free_rate = st.number_input(
@@ -899,12 +899,12 @@ A spot LTP call is a single lightweight request.
 GEX levels shift when OI changes (slowly); GEX *magnitude* shifts when spot moves (every tick).
 
 ### Expiry Calendar (NSE)
-| Index | Weekly | Expiry Day |
-|-------|--------|------------|
-| NIFTY | ✅ | Tuesday |
-| BANKNIFTY | ❌ | Last Tuesday |
-| FINNIFTY | ❌ | Last Tuesday |
-| MIDCPNIFTY | ❌ | Last Tuesday |
+| Index | Weekly / Monthly | Expiry Day | Min. Lot Qty |
+|-------|--------|------------| ------------|
+| NIFTY | ✅ / ✅ | Tuesday | 65 | 
+| BANKNIFTY | ❌ / ✅ | Last Tuesday | 30 |
+| FINNIFTY | ❌ / ✅ | Last Tuesday | 60 |
+| MIDCPNIFTY | ❌ / ✅ | Last Tuesday | 120 |
 
 ### Debug: Why is Kite fetch failing?
 1. Token expires at **6:00 AM daily** — reconnect each morning
