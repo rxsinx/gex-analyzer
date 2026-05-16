@@ -790,7 +790,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=20,r=20,t=40,b=20),
             xaxis=dict(range=[spot_price*0.95, spot_price*1.05]))
-        fig_overlap.add_vline(x=spot_price, line_dash="dash", line_color="white",
+        fig_overlap.add_vline(x=spot_price, line_dash="dash", line_color="black",
                               annotation_text=f"Spot: {spot_price:,.0f}")
         st.plotly_chart(fig_overlap, use_container_width=True)
 
