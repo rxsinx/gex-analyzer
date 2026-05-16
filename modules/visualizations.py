@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Existing GEX / options charts (unchanged)
+# GEX / options charts
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def plot_gex_profile(gex_df, spot_price, gamma_levels):
@@ -110,18 +110,153 @@ def plot_pcr_analysis(gex_df):
 
 
 def plot_spot_gex_levels(gex_df, spot_price, gamma_levels, price_range=500):
-    x = np.arange(spot_price - price_range, spot_price + price_range, 10)
-    y = [gex_df['total_gex'].sum()] * len(x)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=x, y=y, mode='lines', name='Net GEX',
-                             line=dict(color='blue', width=3),
-                             fill='tozeroy', fillcolor='rgba(59,130,246,0.3)'))
-    fig.add_vline(x=spot_price, line_dash="dash", line_color="red",
-                  annotation_text=f"Current: ₹{spot_price:,.0f}")
-    fig.add_hline(y=0, line_dash="solid", line_color="gray")
-    fig.update_layout(title="📉 Net GEX vs Spot", xaxis_title="Spot (₹)",
-                      yaxis_title="Net GEX", template='plotly_dark', height=400,
-                      hovermode='x unified')
+    """
+    Cumulative GEX profile — the canonical dealer-hedging view.
+
+    For each strike K (treated as a hypothetical spot level), the chart shows:
+      • Bar  : net GEX contributed by that strike  (put_gex + call_gex)
+      • Line : running cumulative sum as 'spot' sweeps from low → high strikes
+
+    Where the cumulative line crosses zero = Gamma Flip Point.
+    Positive cumulative → dealers are net long gamma (stabilising).
+    Negative cumulative → dealers are net short gamma (amplifying).
+
+    The price_range argument is retained for API compatibility but is no longer
+    used: the x-axis is now driven by actual strike data, not an artificial
+    linspace around spot.
+    """
+    df = gex_df.sort_values("strike").copy()
+    strikes        = df["strike"].values
+    net_per_strike = df["total_gex"].values
+    cumulative     = np.cumsum(net_per_strike)
+
+    # ── colour each bar by sign ───────────────────────────────────────────────
+    bar_colours = [
+        "rgba(34,197,94,0.65)" if v >= 0 else "rgba(239,68,68,0.65)"
+        for v in net_per_strike
+    ]
+
+    # ── gamma flip from cumulative zero-crossing (more precise) ───────────────
+    flip_idx    = int(np.argmin(np.abs(cumulative)))
+    flip_strike = float(strikes[flip_idx])
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # ── bars: net GEX per strike (primary y) ──────────────────────────────────
+    fig.add_trace(
+        go.Bar(
+            x=strikes,
+            y=net_per_strike,
+            name="Net GEX / Strike",
+            marker_color=bar_colours,
+            opacity=0.70,
+            hovertemplate=(
+                "<b>Strike:</b> ₹%{x:,.0f}<br>"
+                "<b>Net GEX:</b> %{y:,.0f}<extra></extra>"
+            ),
+        ),
+        secondary_y=False,
+    )
+
+    # ── line: cumulative GEX (secondary y) ───────────────────────────────────
+    fig.add_trace(
+        go.Scatter(
+            x=strikes,
+            y=cumulative,
+            name="Cumulative GEX",
+            mode="lines",
+            line=dict(color="#60a5fa", width=2.5),
+            hovertemplate=(
+                "<b>Strike:</b> ₹%{x:,.0f}<br>"
+                "<b>Cumulative GEX:</b> %{y:,.0f}<extra></extra>"
+            ),
+        ),
+        secondary_y=True,
+    )
+
+    # ── zero line on cumulative axis ──────────────────────────────────────────
+    fig.add_hline(
+        y=0,
+        line_dash="solid",
+        line_color="rgba(148,163,184,0.35)",
+        line_width=1,
+        secondary_y=True,
+    )
+
+    # ── current spot ──────────────────────────────────────────────────────────
+    fig.add_vline(
+        x=spot_price,
+        line_dash="dash",
+        line_color="#60a5fa",
+        line_width=1.5,
+        annotation_text=f"  Spot ₹{spot_price:,.0f}",
+        annotation_position="top right",
+        annotation_font=dict(color="#60a5fa", size=11),
+    )
+
+    # ── gamma flip ────────────────────────────────────────────────────────────
+    fig.add_vline(
+        x=flip_strike,
+        line_dash="dot",
+        line_color="#c084fc",
+        line_width=1.5,
+        annotation_text=f"  Flip ₹{flip_strike:,.0f}",
+        annotation_position="bottom right",
+        annotation_font=dict(color="#c084fc", size=11),
+    )
+
+    # ── max pain ──────────────────────────────────────────────────────────────
+    max_pain = gamma_levels.get("max_pain")
+    if max_pain:
+        fig.add_vline(
+            x=max_pain,
+            line_dash="dashdot",
+            line_color="#fb923c",
+            line_width=1.2,
+            annotation_text=f"  Max Pain ₹{max_pain:,.0f}",
+            annotation_position="top left",
+            annotation_font=dict(color="#fb923c", size=10),
+        )
+
+    # ── mark zero-crossing strikes on the cumulative line ─────────────────────
+    for i in range(len(cumulative) - 1):
+        if cumulative[i] * cumulative[i + 1] < 0:          # sign change
+            w = abs(cumulative[i]) / (abs(cumulative[i]) + abs(cumulative[i + 1]))
+            x_cross = float(strikes[i]) + (float(strikes[i + 1]) - float(strikes[i])) * w
+            fig.add_vline(
+                x=x_cross,
+                line_dash="solid",
+                line_color="rgba(192,132,252,0.20)",
+                line_width=1,
+            )
+
+    # ── layout ────────────────────────────────────────────────────────────────
+    fig.update_layout(
+        title="📉 Cumulative GEX Profile — Dealer Hedging Pressure",
+        xaxis_title="Strike / Hypothetical Spot (₹)",
+        template="plotly_dark",
+        height=460,
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="right", x=1),
+        margin=dict(l=60, r=80, t=60, b=40),
+        bargap=0.15,
+    )
+    fig.update_yaxes(
+        title_text="Net GEX per Strike",
+        secondary_y=False,
+        showgrid=True,
+        gridcolor="rgba(51,65,85,0.5)",
+    )
+    fig.update_yaxes(
+        title_text="Cumulative GEX  →",
+        secondary_y=True,
+        showgrid=False,
+        zeroline=True,
+        zerolinecolor="rgba(148,163,184,0.3)",
+    )
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(51,65,85,0.4)")
+
     return fig
 
 
@@ -142,7 +277,6 @@ def create_summary_metrics(gex_df, gamma_levels, spot_price):
 # Index + VIX 1-hour chart with dynamic S/R
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# VIX colour zones (background shading on VIX panel)
 _VIX_ZONES = [
     (0,  12,  "rgba(34,197,94,0.08)",  "Calm"),
     (12, 15,  "rgba(163,230,53,0.08)", "Low"),
@@ -152,13 +286,12 @@ _VIX_ZONES = [
     (35, 100, "rgba(185,28,28,0.18)",  "Extreme Fear"),
 ]
 
-# S/R line styles per type
 _LEVEL_STYLE: dict[str, dict] = {
-    "support":    {"color": "rgba(34,197,94,0.85)",  "dash": "solid",  "width": 1.5},
-    "resistance": {"color": "rgba(239,68,68,0.85)",  "dash": "solid",  "width": 1.5},
-    "pivot":      {"color": "rgba(168,85,247,0.75)", "dash": "dot",    "width": 1.2},
-    "prev_day":   {"color": "rgba(251,191,36,0.85)", "dash": "dashdot","width": 1.5},
-    "round":      {"color": "rgba(148,163,184,0.40)","dash": "dot",    "width": 0.8},
+    "support":    {"color": "rgba(34,197,94,0.85)",  "dash": "solid",   "width": 1.5},
+    "resistance": {"color": "rgba(239,68,68,0.85)",  "dash": "solid",   "width": 1.5},
+    "pivot":      {"color": "rgba(168,85,247,0.75)", "dash": "dot",     "width": 1.2},
+    "prev_day":   {"color": "rgba(251,191,36,0.85)", "dash": "dashdot", "width": 1.5},
+    "round":      {"color": "rgba(148,163,184,0.40)","dash": "dot",     "width": 0.8},
 }
 
 
@@ -170,22 +303,6 @@ def plot_index_vix_chart(
     spot_price: Optional[float] = None,
     interval_label: str = "1 Hr",
 ) -> go.Figure:
-    """
-    3-panel interactive chart
-    ──────────────────────────
-    Panel 1 (68%): Index candlestick + dynamic S/R lines
-    Panel 2 (12%): Volume bars (greyed out for index – often 0)
-    Panel 3 (20%): India VIX line with fear-zone bands
-
-    Parameters
-    ----------
-    index_df  : OHLCV DataFrame, DatetimeIndex
-    vix_df    : OHLCV DataFrame, DatetimeIndex
-    symbol    : e.g. 'NIFTY'
-    levels    : dict from chart_analysis.analyse_levels()
-    spot_price: current spot (draws horizontal reference)
-    interval_label: shown in title
-    """
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
@@ -198,7 +315,6 @@ def plot_index_vix_chart(
         ],
     )
 
-    # ── Panel 1: Candlestick ──────────────────────────────────────────────────
     fig.add_trace(go.Candlestick(
         x=index_df.index,
         open=index_df["open"],
@@ -206,14 +322,11 @@ def plot_index_vix_chart(
         low=index_df["low"],
         close=index_df["close"],
         name=symbol,
-        increasing=dict(line=dict(color="#22c55e", width=1),
-                        fillcolor="#22c55e"),
-        decreasing=dict(line=dict(color="#ef4444", width=1),
-                        fillcolor="#ef4444"),
+        increasing=dict(line=dict(color="#22c55e", width=1), fillcolor="#22c55e"),
+        decreasing=dict(line=dict(color="#ef4444", width=1), fillcolor="#ef4444"),
         showlegend=False,
     ), row=1, col=1)
 
-    # ── current spot line ─────────────────────────────────────────────────────
     if spot_price:
         fig.add_hline(
             y=spot_price, row=1, col=1,
@@ -223,10 +336,8 @@ def plot_index_vix_chart(
             annotation_font=dict(color="#60a5fa", size=11),
         )
 
-    # ── S/R lines on Panel 1 ─────────────────────────────────────────────────
     _draw_levels(fig, levels, index_df, row=1)
 
-    # ── Panel 2: Volume ───────────────────────────────────────────────────────
     if "volume" in index_df.columns:
         colours = [
             "#22c55e" if c >= o else "#ef4444"
@@ -242,10 +353,6 @@ def plot_index_vix_chart(
             hovertemplate="<b>%{x}</b><br>Vol: %{y:,.0f}<extra></extra>",
         ), row=2, col=1)
 
-    # ── Panel 3: India VIX ───────────────────────────────────────────────────
-    # Fear-zone background bands
-    x_min = vix_df.index.min()
-    x_max = vix_df.index.max()
     for lo, hi, colour, label in _VIX_ZONES:
         fig.add_hrect(
             y0=lo, y1=hi, row=3, col=1,
@@ -255,7 +362,6 @@ def plot_index_vix_chart(
             annotation_font=dict(size=9, color="rgba(200,200,200,0.6)"),
         )
 
-    # VIX line
     fig.add_trace(go.Scatter(
         x=vix_df.index,
         y=vix_df["close"],
@@ -267,7 +373,6 @@ def plot_index_vix_chart(
         hovertemplate="<b>%{x}</b><br>VIX: %{y:.2f}<extra></extra>",
     ), row=3, col=1)
 
-    # current VIX label
     latest_vix = float(vix_df["close"].iloc[-1])
     vix_colour = (
         "#22c55e" if latest_vix < 15 else
@@ -283,7 +388,6 @@ def plot_index_vix_chart(
         xanchor="left",
     )
 
-    # ── layout ────────────────────────────────────────────────────────────────
     fig.update_layout(
         template="plotly_dark",
         height=750,
@@ -301,77 +405,59 @@ def plot_index_vix_chart(
     )
     fig.update_yaxes(showgrid=True, gridcolor="rgba(51,65,85,0.5)")
     fig.update_yaxes(title_text=symbol, row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1)
-    fig.update_yaxes(title_text="VIX", row=3, col=1)
+    fig.update_yaxes(title_text="Volume",  row=2, col=1)
+    fig.update_yaxes(title_text="VIX",     row=3, col=1)
 
     return fig
 
 
 def _draw_levels(fig: go.Figure, levels: dict, df: pd.DataFrame, row: int):
-    """Add horizontal S/R lines to fig panel *row*."""
-    # Compute price range visible on chart for clipping labels
     price_min = float(df["low"].min())
     price_max = float(df["high"].max())
-
-    drawn: set[float] = set()  # avoid duplicate lines
+    drawn: set[float] = set()
 
     for level_type, items in levels.items():
         style = _LEVEL_STYLE.get(level_type, _LEVEL_STYLE["pivot"])
         for lvl in items:
             p = lvl.price
-            # clip to visible range (with 5 % margin)
             if p < price_min * 0.95 or p > price_max * 1.05:
                 continue
-            # deduplicate within 0.05 %
             if any(abs(p - d) / max(d, 1) < 0.0005 for d in drawn):
                 continue
             drawn.add(p)
-
-            # stronger levels get thicker lines
             lw = style["width"] * (1.4 if lvl.strength == "strong" else 1.0)
-
             fig.add_hline(
                 y=p, row=row, col=1,
-                line=dict(
-                    color=style["color"],
-                    dash=style["dash"],
-                    width=lw,
-                ),
+                line=dict(color=style["color"], dash=style["dash"], width=lw),
                 annotation_text=f"  {lvl.label} ₹{p:,.0f}",
                 annotation_position="right",
                 annotation_font=dict(
-                    color=style["color"].replace("0.85", "1").replace("0.75", "1"),
+                    color=style["color"].replace("0.85","1").replace("0.75","1"),
                     size=9,
                 ),
             )
 
 
-# ── S/R summary table ────────────────────────────────────────────────────────
-
 def build_levels_table(levels: dict, spot: float) -> pd.DataFrame:
-    """
-    Flatten all levels into a DataFrame for display,
-    sorted by proximity to spot.
-    """
-    from modules.chart_analysis import PriceLevel
     rows: list[dict] = []
     for ltype, items in levels.items():
         for lvl in items:
             dist_pct = (lvl.price - spot) / spot * 100
             rows.append({
-                "Level":    f"₹{lvl.price:,.1f}",
-                "Type":     lvl.label or ltype.title(),
-                "Category": ltype.replace("_", " ").title(),
-                "Touches":  lvl.touches,
-                "Strength": lvl.strength.title(),
+                "Level":     f"₹{lvl.price:,.1f}",
+                "Type":      lvl.label or ltype.title(),
+                "Category":  ltype.replace("_"," ").title(),
+                "Touches":   lvl.touches,
+                "Strength":  lvl.strength.title(),
                 "From Spot": f"{dist_pct:+.2f}%",
                 "_dist_abs": abs(dist_pct),
-                "_price":   lvl.price,
+                "_price":    lvl.price,
             })
     if not rows:
         return pd.DataFrame()
-    df = (pd.DataFrame(rows)
-          .sort_values("_dist_abs")
-          .drop(columns=["_dist_abs", "_price"])
-          .reset_index(drop=True))
-    return df
+    return (
+        pd.DataFrame(rows)
+        .sort_values("_dist_abs")
+        .drop(columns=["_dist_abs", "_price"])
+        .reset_index(drop=True)
+    )
