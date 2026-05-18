@@ -872,7 +872,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                 height=380,
             )
             fig_ov.add_vline(
-                x=spot_price, line_dash="dash", line_color="white",
+                x=spot_price, line_dash="dash", line_color="black",
                 annotation_text=f"Spot ₹{spot_price:,.0f}",
                 annotation_font=dict(color="white", size=10),
             )
