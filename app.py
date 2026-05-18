@@ -40,6 +40,7 @@ from modules.utils import (
     calculate_time_to_expiry,
 )
 from modules.chart_analysis import analyse_levels
+from modules.menthorq_gex import plot_menthorq_gex, generate_gex_analysis
 from modules.trade_recommendations import generate_trade_recommendations
 from modules.kite_connector import (
     KiteManager, KiteError, KiteAuthError, KiteDataError,
@@ -740,59 +741,142 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         e3.metric("νEX", f"{gex_df['total_vex'].sum():,.0f}")
         e4.metric("ΘEX/day", format_number(gex_df["total_tex"].sum()))
 
+    # TAB 4 — MenthorQ-Style GEX Chart  (replace the existing tab4 block)
     with tab4:
-        import plotly.graph_objects as _go
-
-        st.subheader("📋 Gamma Confusion Matrix & Exposure Overlap")
-        c_gex = gex_df['call_gex'].sum()
-        p_gex = gex_df['put_gex'].sum()
-        call_state = "+ve" if c_gex > 0 else "-ve"
-        put_state  = "+ve" if p_gex > 0 else "-ve"
-        net_state  = "+ve" if net_gex > 0 else "-ve"
-
-        matrix_data = [
-            {"Call G":"+ve","Put G":"+ve","Net GEX":"+ve","Nature":"Ultra-Stable",
-             "Dealer Logic":"Dealers Long both; Volatility suppressed."},
-            {"Call G":"+ve","Put G":"-ve","Net GEX":"+ve","Nature":"Bullish Support",
-             "Dealer Logic":"Long Calls > Short Puts; Market floor exists."},
-            {"Call G":"+ve","Put G":"-ve","Net GEX":"-ve","Nature":"Volatility Trap",
-             "Dealer Logic":"Short Puts dominate; Risk of rapid sell-off."},
-            {"Call G":"-ve","Put G":"+ve","Net GEX":"+ve","Nature":"Bearish Resistance",
-             "Dealer Logic":"Short Calls act as ceiling capping upside."},
-            {"Call G":"-ve","Put G":"+ve","Net GEX":"-ve","Nature":"The Squeeze",
-             "Dealer Logic":"Short Calls dominate; Breakout triggers Melt-up."},
-            {"Call G":"-ve","Put G":"-ve","Net GEX":"-ve","Nature":"Maximum Chaos",
-             "Dealer Logic":"Short everything; Dealers amplify moves both ways."},
-        ]
-        matrix_df = pd.DataFrame(matrix_data)
-
-        def highlight_active(row):
-            if (row['Call G'] == call_state
-                    and row['Put G'] == put_state
-                    and row['Net GEX'] == net_state):
-                return ['background-color: rgba(255,165,0,0.3)'] * len(row)
-            return [''] * len(row)
-
-        st.table(matrix_df.style.apply(highlight_active, axis=1))
+ 
+        # ── MenthorQ main chart ───────────────────────────────────────────────
+        st.subheader("📊 Net GEX Profile — Dealer Positioning")
+ 
+        fig_mq = plot_menthorq_gex(
+            gex_df       = gex_df,
+            spot_price   = spot_price,
+            gamma_levels = gamma_levels,
+            symbol       = symbol,
+        )
+        st.plotly_chart(fig_mq, use_container_width=True)
+ 
+        # ── Auto-generated analysis text ──────────────────────────────────────
+        analysis_lines = generate_gex_analysis(
+            gex_df       = gex_df,
+            spot_price   = spot_price,
+            gamma_levels = gamma_levels,
+            symbol       = symbol,
+        )
+ 
+        # render as a styled box matching MenthorQ's bottom summary
+        analysis_html = "".join(
+            f"<p style='margin:4px 0;font-size:13px;color:#E2E8F0;line-height:1.55'>{line}</p>"
+            for line in analysis_lines
+        )
+        st.markdown(f"""
+<div style='
+    background:rgba(15,23,42,0.85);
+    border:1px solid rgba(100,116,139,0.35);
+    border-left:3px solid #EAB308;
+    border-radius:6px;
+    padding:14px 18px;
+    margin-top:4px;
+    font-family:sans-serif;
+'>
+{analysis_html}
+</div>""", unsafe_allow_html=True)
+ 
         st.markdown("---")
-
-        st.subheader("📊 Gamma Exposure Overlap (Call vs Put)")
-        fig_overlap = _go.Figure()
-        fig_overlap.add_trace(_go.Bar(
-            x=gex_df['strike'], y=gex_df['call_gex'],
-            name='Call GEX', marker_color='#ef4444', opacity=0.7))
-        fig_overlap.add_trace(_go.Bar(
-            x=gex_df['strike'], y=gex_df['put_gex'],
-            name='Put GEX', marker_color='#22c55e', opacity=0.7))
-        fig_overlap.update_layout(
-            template="plotly_dark", barmode='overlay',
-            xaxis_title="Strike Price", yaxis_title="GEX (Cr)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=20,r=20,t=40,b=20),
-            xaxis=dict(range=[spot_price*0.95, spot_price*1.05]))
-        fig_overlap.add_vline(x=spot_price, line_dash="dash", line_color="black",
-                              annotation_text=f"Spot: {spot_price:,.0f}")
-        st.plotly_chart(fig_overlap, use_container_width=True)
+ 
+        # ── Quick-reference metrics under the chart ───────────────────────────
+        qa, qb, qc, qd, qe = st.columns(5)
+        qa.metric("🚧 Call Wall",   f"₹{gamma_levels.get('max_call_oi_strike', spot_price):,.0f}",
+                  delta=f"{(gamma_levels.get('max_call_oi_strike', spot_price) - spot_price):+.0f}")
+        qb.metric("🛡 Put Wall",    f"₹{gamma_levels.get('max_put_oi_strike', spot_price):,.0f}",
+                  delta=f"{(gamma_levels.get('max_put_oi_strike', spot_price) - spot_price):+.0f}")
+        qc.metric("🔄 HVL / Flip",  f"₹{gamma_levels.get('gamma_flip', spot_price):,.0f}",
+                  delta=f"{(gamma_levels.get('gamma_flip', spot_price) - spot_price):+.0f}")
+        qd.metric("📊 Net GEX",     format_number(gamma_levels.get('total_gex', 0)))
+        qe.metric("📐 PCR",         f"{gamma_levels.get('pcr', 1.0):.3f}")
+ 
+        st.markdown("---")
+ 
+        # ── Gamma Confusion Matrix (kept below the main chart) ────────────────
+        with st.expander("📋 Gamma Confusion Matrix", expanded=False):
+            import plotly.graph_objects as _go
+ 
+            c_gex      = gex_df['call_gex'].sum()
+            p_gex      = gex_df['put_gex'].sum()
+            call_state = "+ve" if c_gex  > 0 else "-ve"
+            put_state  = "+ve" if p_gex  > 0 else "-ve"
+            net_state  = "+ve" if net_gex > 0 else "-ve"
+ 
+            matrix_data = [
+                {
+                    "Call Γ": "+ve", "Put Γ": "+ve", "Net GEX": "+ve",
+                    "Nature": "Ultra-Stable",
+                    "Dealer Logic": "Long both; volatility suppressed.",
+                },
+                {
+                    "Call Γ": "+ve", "Put Γ": "-ve", "Net GEX": "+ve",
+                    "Nature": "Bullish Support",
+                    "Dealer Logic": "Long Calls > Short Puts; floor exists.",
+                },
+                {
+                    "Call Γ": "+ve", "Put Γ": "-ve", "Net GEX": "-ve",
+                    "Nature": "Volatility Trap",
+                    "Dealer Logic": "Short Puts dominate; rapid sell-off risk.",
+                },
+                {
+                    "Call Γ": "-ve", "Put Γ": "+ve", "Net GEX": "+ve",
+                    "Nature": "Bearish Resistance",
+                    "Dealer Logic": "Short Calls cap upside.",
+                },
+                {
+                    "Call Γ": "-ve", "Put Γ": "+ve", "Net GEX": "-ve",
+                    "Nature": "The Squeeze",
+                    "Dealer Logic": "Short Calls dominate; breakout triggers melt-up.",
+                },
+                {
+                    "Call Γ": "-ve", "Put Γ": "-ve", "Net GEX": "-ve",
+                    "Nature": "Maximum Chaos",
+                    "Dealer Logic": "Short both; dealers amplify moves.",
+                },
+            ]
+ 
+            matrix_df = pd.DataFrame(matrix_data)
+ 
+            def _hl_active(row):
+                if (row["Call Γ"] == call_state
+                        and row["Put Γ"] == put_state
+                        and row["Net GEX"] == net_state):
+                    return ["background-color:rgba(234,179,8,0.28)"] * len(row)
+                return [""] * len(row)
+ 
+            st.table(matrix_df.style.apply(_hl_active, axis=1))
+ 
+            st.markdown("---")
+ 
+            # ── Gamma Overlap chart ────────────────────────────────────────────
+            st.markdown("##### Gamma Exposure Overlap (Call vs Put)")
+            fig_ov = _go.Figure()
+            fig_ov.add_trace(_go.Bar(
+                x=gex_df["strike"], y=gex_df["call_gex"],
+                name="Call GEX", marker_color="#ef4444", opacity=0.7,
+            ))
+            fig_ov.add_trace(_go.Bar(
+                x=gex_df["strike"], y=gex_df["put_gex"],
+                name="Put GEX", marker_color="#22c55e", opacity=0.7,
+            ))
+            fig_ov.update_layout(
+                template="plotly_dark", barmode="overlay",
+                xaxis_title="Strike Price", yaxis_title="GEX",
+                xaxis=dict(range=[spot_price * 0.95, spot_price * 1.05]),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=20, r=20, t=40, b=20),
+                height=380,
+            )
+            fig_ov.add_vline(
+                x=spot_price, line_dash="dash", line_color="white",
+                annotation_text=f"Spot ₹{spot_price:,.0f}",
+                annotation_font=dict(color="white", size=10),
+            )
+            st.plotly_chart(fig_ov, use_container_width=True)
 
     with tab5:
         st.subheader("🎯 Intelligent Trade Signals")
