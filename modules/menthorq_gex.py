@@ -232,14 +232,14 @@ def plot_menthorq_gex(
         text="<br>".join([
             "<b>Area / Feature</b>                  <b>Label / Insight</b>",
             "────────────────────────────────────",
-            f"<span style='color:{_C_CALL}'>●</span>  Call Resistance           Major Dealer Resistance",
-            "<span style='color:#22C55E'>●</span>  +GEX Cluster                     Gamma Pin / Support",
-            f"<span style='color:{_C_HVL}'>●</span>  HVL Regime Level                Volatility Trigger",
-            "<span style='color:#F97316'>●</span>  –GEX Pocket                        Acceleration Zone",
-            f"<span style='color:{_C_SPOT}'>●</span>  Spot Price                          Current Level",
+            f"<span style='color:{_C_CALL}'>●</span>  Call Resistance          Major Dealer Resistance",
+            "<span style='color:#22C55E'>●</span>  +GEX Cluster                 Gamma Pin / Support",
+            f"<span style='color:{_C_HVL}'>●</span>  HVL Regime Level            Volatility Trigger",
+            "<span style='color:#F97316'>●</span>  –GEX Pocket                    Acceleration Zone",
+            f"<span style='color:{_C_SPOT}'>●</span>  Spot Price                  Current Level",
             "────────────────────────────────────",
-            f"<span style='color:{_C_GEX}'>━━</span> GEX Profile                Per-strike bar envelope",
-            f"<span style='color:{_C_CUM}'>━━</span> Cumul. GEX                Running sum → zero = HVL",
+            f"<span style='color:{_C_GEX}'>━━</span> GEX Profile              Per-strike bar envelope",
+            f"<span style='color:{_C_CUM}'>━━</span> Cumul. GEX               Running sum → zero = HVL",
         ]),
     )
 
