@@ -325,19 +325,19 @@ def generate_gex_analysis(
     # L1: regime
     if net_gex > 0:
         lines.append(
-            f"⚡ **{symbol} is in positive gamma** — dealers buy dips and sell rallies, "
+            f"⚡ {symbol} is in positive gamma — dealers buy dips and sell rallies, "
             f"dampening intraday volatility and supporting range-bound price action."
         )
     else:
         lines.append(
-            f"⚡ **{symbol} is in negative gamma** — dealers must hedge in the direction "
+            f"⚡ {symbol} is in negative gamma — dealers must hedge in the direction "
             f"of price moves, amplifying both rallies and sell-offs."
         )
 
     # L2: call wall
     if call_dist > 0:
         lines.append(
-            f"**Major call wall at ₹{call_wall:,.0f}** ({call_dist:.1f}% above spot) — "
+            f"Major call wall @ ₹{call_wall:,.0f}  ({call_dist:.1f}% above spot) — "
             f"heavy dealer short-call positioning caps upside until cleared."
         )
     else:
@@ -349,14 +349,14 @@ def generate_gex_analysis(
     # L3: HVL / cumulative GEX context
     if above_hvl:
         lines.append(
-            f"Spot is **{hvl_dist:.1f}% above HVL (₹{hvl:,.0f})**. "
+            f"Spot is @ {hvl_dist:.1f}% above HVL (₹{hvl:,.0f}). "
             f"Below HVL the cumulative GEX flips negative — "
             f"exposing a dealer short-gamma pocket that accelerates downside "
             f"toward the put wall at ₹{put_wall:,.0f}."
         )
     else:
         lines.append(
-            f"Spot is **{hvl_dist:.1f}% below HVL (₹{hvl:,.0f})**. "
+            f"Spot is @ {hvl_dist:.1f}% below HVL (₹{hvl:,.0f}). "
             f"Reclaiming HVL pushes cumulative GEX positive and flips "
             f"dealers long gamma — stabilising price action. "
             f"Put wall at ₹{put_wall:,.0f} is the near-term structural floor."
@@ -366,11 +366,11 @@ def generate_gex_analysis(
     if net_gex > 0 and above_hvl:
         lines.append(
             f"The market is stable near the gamma pin, but asymmetry is building: "
-            f"**slow grind upside vs fast accelerated downside if HVL ₹{hvl:,.0f} breaks.**"
+            f"slow grind upside vs fast accelerated downside if HVL ₹{hvl:,.0f} breaks."
         )
     elif net_gex < 0:
         lines.append(
-            f"**Both breakouts and breakdowns are amplified** by dealer hedging in "
+            f"Both breakouts and breakdowns are amplified by dealer hedging in "
             f"this negative gamma environment. Favour momentum over mean-reversion."
         )
     else:
