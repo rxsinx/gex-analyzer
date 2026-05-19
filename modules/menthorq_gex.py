@@ -375,7 +375,7 @@ def generate_gex_analysis(
         )
     else:
         lines.append(
-            f"**Key bifurcation: ₹{hvl:,.0f} HVL** — "
+            f"Key bifurcation: ₹{hvl:,.0f} HVL — "
             f"above it the cumulative GEX is positive and dealers stabilise; "
             f"below it they accelerate. Watch the orange line crossing zero."
         )
