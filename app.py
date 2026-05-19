@@ -766,7 +766,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         # render as a styled box matching MenthorQ's bottom summary
         list_items = "".join(f"<li style='margin:6px 0; font-size:13px; color:#E2E8F0; line-height:1.55;'>{line}</li>" for line in analysis_lines)
         analysis_html = f"<ul style='margin:0; padding-left:20px;'>{list_items}</ul>"
-        )
+        
         st.markdown(f"""
           <div style='
               background:rgba(15,23,42,0.85);
