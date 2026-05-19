@@ -786,7 +786,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         qa, qb, qc, qd, qe = st.columns(5)
         qa.metric("🚧 Call Wall",   f"₹{gamma_levels.get('max_call_oi_strike', spot_price):,.0f}",
                   delta=f"{(gamma_levels.get('max_call_oi_strike', spot_price) - spot_price):+.0f}")
-        qb.metric("🛡 Put Wall",    f"₹{gamma_levels.get('max_put_oi_strike', spot_price):,.0f}",
+        qb.metric("🛡️ Put Wall",    f"₹{gamma_levels.get('max_put_oi_strike', spot_price):,.0f}",
                   delta=f"{(gamma_levels.get('max_put_oi_strike', spot_price) - spot_price):+.0f}")
         qc.metric("🔄 HVL / Flip",  f"₹{gamma_levels.get('gamma_flip', spot_price):,.0f}",
                   delta=f"{(gamma_levels.get('gamma_flip', spot_price) - spot_price):+.0f}")
