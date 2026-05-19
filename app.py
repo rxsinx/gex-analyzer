@@ -768,17 +768,17 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         analysis_html = f"<ul style='margin:0; padding-left:20px;'>{list_items}</ul>"
         )
         st.markdown(f"""
-<div style='
-    background:rgba(15,23,42,0.85);
-    border:1px solid rgba(100,116,139,0.35);
-    border-left:3px solid #EAB308;
-    border-radius:6px;
-    padding:14px 18px;
-    margin-top:4px;
-    font-family:sans-serif;
-'>
-{analysis_html}
-</div>""", unsafe_allow_html=True)
+          <div style='
+              background:rgba(15,23,42,0.85);
+              border:1px solid rgba(100,116,139,0.35);
+              border-left:3px solid #EAB308;
+              border-radius:6px;
+              padding:14px 18px;
+              margin-top:4px;
+              font-family:sans-serif;
+          '>
+              {analysis_html}
+          </div>""", unsafe_allow_html=True)
  
         st.markdown("---")
  
