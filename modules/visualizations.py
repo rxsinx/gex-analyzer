@@ -67,13 +67,13 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     # ── 3. UPDATE LAYOUT WITH RIGHT MARGIN SPACING ─────────────────────────────
     fig.update_layout(
         title="📊 Gamma Exposure Profile", 
-        xaxis_title="Strike (₹)",
+        xaxis_title="Strike",
         yaxis_title="GEX", 
         barmode='relative', 
         hovermode='x unified',
         template='plotly_dark', 
         height=500,
-        margin=dict(r=180)  # Adds space on the right side for the table box
+        margin=dict(r=240)  # Adds space on the right side for the table box
     )
 
     # ── 4. DISPLAY SIDEBAR SUMMARY BOX ON RIGHT BORDER ─────────────────────────
@@ -95,7 +95,7 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     fig.add_annotation(
         text=annotation_text,
         xref="paper", yref="paper",
-        x=1.03, y=0.5,  # Floats right outside chart canvas border
+        x=1.04, y=0.5,  # Floats right outside chart canvas border
         xanchor="left", yanchor="middle",
         showarrow=False,
         align="left",
