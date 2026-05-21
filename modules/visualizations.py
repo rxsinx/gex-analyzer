@@ -86,13 +86,13 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     annotation_text = (
         "<b>⚠️ KEY LEVELS SUMMARY</b><br>"
         "─────────────────────────────<br>"
-        "<span style='color:#22c55e;'><b>── Solid Green</b></span><br>"
+        "<span style='color:#22c55e;'><b>── </b></span><br>"
         f"Put Support (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_oi_supp}</b><br><br>"
-        "<span style='color:#22c55e;'><b>- - Dashed Green</b></span><br>"
+        "<span style='color:#22c55e;'><b>- - </b></span><br>"
         f"Put Support (GEX): &nbsp;&nbsp;&nbsp;&nbsp;<b>{val_gex_supp}</b><br><br>"
-        "<span style='color:#ef4444;'><b>── Solid Red</b></span><br>"
+        "<span style='color:#ef4444;'><b>── </b></span><br>"
         f"Call Resist (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_oi_res}</b><br><br>"
-        "<span style='color:#ef4444;'><b>- - Dashed Red</b></span><br>"
+        "<span style='color:#ef4444;'><b>- - </b></span><br>"
         f"Call Resist (GEX): &nbsp;&nbsp;&nbsp;&nbsp;<b>{val_gex_res}</b>"
     )
 
