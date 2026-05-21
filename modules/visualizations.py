@@ -19,25 +19,36 @@ from plotly.subplots import make_subplots
 
 def plot_gex_profile(gex_df, spot_price, gamma_levels):
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=gex_df['strike'], y=gex_df['call_gex'],
-                         name='Call GEX', marker_color='rgba(239,68,68,0.7)',
-                         hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:,.0f}<extra></extra>'))
-    fig.add_trace(go.Bar(x=gex_df['strike'], y=gex_df['put_gex'],
-                         name='Put GEX', marker_color='rgba(34,197,94,0.7)',
-                         hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:,.0f}<extra></extra>'))
-    fig.add_vline(x=spot_price, line_dash="dash", line_color="blue",
-                  annotation_text=f"Spot: ₹{spot_price:,.0f}", annotation_position="top right")
-    if gamma_levels.get('gamma_flip'):
-        fig.add_vline(x=gamma_levels['gamma_flip'], line_dash="dot", line_color="purple",
-                      annotation_text=f"Flip: ₹{gamma_levels['gamma_flip']:,.0f}",
-                      annotation_position="bottom right")
-    if gamma_levels.get('max_pain'):
-        fig.add_vline(x=gamma_levels['max_pain'], line_dash="dashdot", line_color="orange",
-                      annotation_text=f"Max Pain: ₹{gamma_levels['max_pain']:,.0f}",
-                      annotation_position="top left")
-    fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
     
-    # ── 1. COMPUTE KEY LEVELS FROM OI AND GEX ──────────────────────────────────
+    # ── 1. ADD BARS FOR CALL AND PUT GEX ───────────────────────────────────────
+    fig.add_trace(go.Bar(
+        x=gex_df['strike'], y=gex_df['call_gex'], name='Call GEX', 
+        marker_color='rgba(239,68,68,0.7)', 
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:,.0f}<extra></extra>'
+    ))
+    fig.add_trace(go.Bar(
+        x=gex_df['strike'], y=gex_df['put_gex'], name='Put GEX', 
+        marker_color='rgba(34,197,94,0.7)', 
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:,.0f}<extra></extra>'
+    ))
+
+    # ── 2. ADD VISUAL MARKER LINES ONLY (NO TEXT OVERLAYS) ─────────────────────
+    # Blue line for Spot
+    fig.add_vline(x=spot_price, line_dash="dash", line_color="blue", line_width=1.5)
+    
+    # Purple dot for Flip
+    if gamma_levels.get('gamma_flip'):
+        fig.add_vline(x=gamma_levels['gamma_flip'], line_dash="dot", line_color="purple", line_width=1.5)
+        
+    # Orange dash-dot for Max Pain
+    max_pain = gamma_levels.get('max_pain')
+    if max_pain:
+        fig.add_vline(x=max_pain, line_dash="dashdot", line_color="orange", line_width=1.5)
+        
+    # Gray horizontal zero baseline
+    fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
+
+    # ── 3. COMPUTE S/R KEY LEVELS FROM OI AND GEX ─────────────────────────────
     try:
         oi_support = float(gex_df.loc[gex_df['put_oi'].idxmax(), 'strike'])
         oi_resistance = float(gex_df.loc[gex_df['call_oi'].idxmax(), 'strike'])
@@ -46,25 +57,24 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
 
     try:
         gex_support = float(gex_df.loc[gex_df['put_gex'].idxmax(), 'strike'])
-        gex_resistance = float(gex_df.loc[gex_df['call_gex'].idxmin(), 'strike']) # Max negative GEX
+        gex_resistance = float(gex_df.loc[gex_df['call_gex'].idxmin(), 'strike'])
     except Exception:
         gex_support = gamma_levels.get("support")
         gex_resistance = gamma_levels.get("resistance")
 
-    # ── 2. ADD VISUAL MARKERS (LINES) TO THE CHART ─────────────────────────────
-    # Structural Walls (Highest Open Interest) -> Solid Lines
+    # Draw Structural S/R Lines (Solid Lines)
     if oi_support:
         fig.add_vline(x=oi_support, line_dash="solid", line_color="#22c55e", line_width=1.5)
     if oi_resistance:
         fig.add_vline(x=oi_resistance, line_dash="solid", line_color="#ef4444", line_width=1.5)
 
-    # Hedging Walls (Highest GEX Concentration) -> Dashed Lines
+    # Draw Hedging S/R Lines (Dashed Lines)
     if gex_support:
         fig.add_vline(x=gex_support, line_dash="dash", line_color="#22c55e", line_width=1.5)
     if gex_resistance:
         fig.add_vline(x=gex_resistance, line_dash="dash", line_color="#ef4444", line_width=1.5)
 
-    # ── 3. UPDATE LAYOUT WITH RIGHT MARGIN SPACING ─────────────────────────────
+    # ── 4. UPDATE LAYOUT PROPERTIES ───────────────────────────────────────────
     fig.update_layout(
         title="📊 Gamma Exposure Profile", 
         xaxis_title="Strike",
@@ -73,11 +83,13 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
         hovermode='x unified',
         template='plotly_dark', 
         height=500,
-        margin=dict(r=260)  # Adds space on the right side for the table box
+        margin=dict(r=260)  # Preserves space on the right side for the summary table
     )
 
-    # ── 4. DISPLAY SIDEBAR SUMMARY BOX ON RIGHT BORDER ─────────────────────────
-    # Safely format numbers to plain string fallback without currency symbols
+    # ── 5. RENDER CONSOLIDATED COMPACT KEY LEVELS SUMMARY TABLE ───────────────
+    # Format all numeric metrics safely
+    val_spot = f"{spot_price:,.0f}" if spot_price else "N/A"
+    val_mp = f"{max_pain:,.0f}" if max_pain else "N/A"
     val_oi_supp = f"{oi_support:,.0f}" if oi_support else "N/A"
     val_gex_supp = f"{gex_support:,.0f}" if gex_support else "N/A"
     val_oi_res = f"{oi_resistance:,.0f}" if oi_resistance else "N/A"
@@ -86,16 +98,18 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     annotation_text = (
         "<b>⚠️ KEY LEVELS SUMMARY</b><br>"
         "─────────────────────────────<br>"
-        f"<span style='color:#22c55e;'><b>--- Put Support (OI):</b></span> &nbsp;<b>{val_oi_supp}</b><br><br>"
-        f"<span style='color:#22c55e;'><b>- - Put Support (GEX):</b></span> <b>{val_gex_supp}</b><br><br>"
-        f"<span style='color:#ef4444;'><b>--- Call Resist (OI):</b></span> &nbsp;<b>{val_oi_res}</b><br><br>"
+        f"<span style='color:blue;'><b>- - Spot Price:</b></span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_spot}</b><br>"
+        f"<span style='color:orange;'><b>-.- Max Pain:</b></span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_mp}</b><br>"
+        f"<span style='color:#22c55e;'><b>--- Put Support (OI):</b></span> &nbsp;<b>{val_oi_supp}</b><br>"
+        f"<span style='color:#22c55e;'><b>- - Put Support (GEX):</b></span> <b>{val_gex_supp}</b><br>"
+        f"<span style='color:#ef4444;'><b>--- Call Resist (OI):</b></span> &nbsp;<b>{val_oi_res}</b><br>"
         f"<span style='color:#ef4444;'><b>- - Call Resist (GEX):</b></span> <b>{val_gex_res}</b>"
     )
 
     fig.add_annotation(
         text=annotation_text,
         xref="paper", yref="paper",
-        x=1.02, y=0.5,  # Shifted closer to the plot canvas to guarantee visibility
+        x=1.02, y=0.5,
         xanchor="left", yanchor="middle",
         showarrow=False,
         align="left",
@@ -103,7 +117,7 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
         bordercolor="rgba(148, 163, 184, 0.4)",
         borderwidth=1,
         borderpad=10,
-        bgcolor="rgba(15, 23, 42, 0.95)"  # High contrast background
+        bgcolor="rgba(15, 23, 42, 0.95)"
     )
 
     return fig
