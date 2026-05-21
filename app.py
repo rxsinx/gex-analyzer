@@ -520,7 +520,6 @@ with st.sidebar:
                     df_f = filter_strikes(df, spot, 15)
                     st.warning("Widened strike range to ±15%.")
                 try:
-                    try:
                     gx  = calculate_gex(df_f, spot, expiry_date, risk_free_rate)
                     gl  = find_gamma_levels(gx, spot)
                     now = datetime.now(IST)
