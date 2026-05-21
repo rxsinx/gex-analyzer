@@ -100,9 +100,9 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
         "─────────────────────────────<br>"
         f"<span style='color:blue;'><b>- - Spot Price:</b></span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_spot}</b><br>"
         f"<span style='color:orange;'><b>-.- Max Pain:</b></span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_mp}</b><br>"
-        f"<span style='color:#22c55e;'><b>--- Put Support (OI):</b></span> &nbsp;<b>{val_oi_supp}</b><br>"
+        f"<span style='color:#22c55e;'><b>--- Put Wall (OI):</b></span> &nbsp;<b>{val_oi_supp}</b><br>"
         f"<span style='color:#22c55e;'><b>- - Put Support (GEX):</b></span> <b>{val_gex_supp}</b><br>"
-        f"<span style='color:#ef4444;'><b>--- Call Resist (OI):</b></span> &nbsp;<b>{val_oi_res}</b><br>"
+        f"<span style='color:#ef4444;'><b>--- Call Wall (OI):</b></span> &nbsp;<b>{val_oi_res}</b><br>"
         f"<span style='color:#ef4444;'><b>- - Call Resist (GEX):</b></span> <b>{val_gex_res}</b>"
     )
 
