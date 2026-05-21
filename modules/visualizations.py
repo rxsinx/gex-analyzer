@@ -100,18 +100,6 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
         bgcolor="rgba(15, 23, 42, 0.85)"  # Clean background contrast
     )
 
-    # 2. Add Call Resistance Vertical Line (Max Negative GEX)
-    if isinstance(resistance_level, (int, float)):
-        fig.add_vline(
-            x=resistance_level, 
-            line_dash="dash", 
-            line_color="#ef4444",  # Red color matching Calls
-            line_width=1.5,
-            annotation_text=f"Call Resistance (₹{resistance_level:,.0f})", 
-            annotation_position="top right",
-            annotation_font=dict(color="#ef4444", size=10)
-        )
-    
     return fig
 
 
