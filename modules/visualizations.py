@@ -39,6 +39,34 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     fig.update_layout(title="📊 Gamma Exposure Profile", xaxis_title="Strike (₹)",
                       yaxis_title="GEX", barmode='relative', hovermode='x unified',
                       template='plotly_dark', height=500)
+    
+    support_level = gamma_levels.get("support")
+    resistance_level = gamma_levels.get("resistance")
+
+    # 1. Add Put Support Vertical Line (Max Positive GEX)
+    if isinstance(support_level, (int, float)):
+        fig.add_vline(
+            x=support_level, 
+            line_dash="dash", 
+            line_color="#22c55e",  # Green color matching Puts
+            line_width=1.5,
+            annotation_text=f"Put Support (₹{support_level:,.0f})", 
+            annotation_position="top left",
+            annotation_font=dict(color="#22c55e", size=10)
+        )
+
+    # 2. Add Call Resistance Vertical Line (Max Negative GEX)
+    if isinstance(resistance_level, (int, float)):
+        fig.add_vline(
+            x=resistance_level, 
+            line_dash="dash", 
+            line_color="#ef4444",  # Red color matching Calls
+            line_width=1.5,
+            annotation_text=f"Call Resistance (₹{resistance_level:,.0f})", 
+            annotation_position="top right",
+            annotation_font=dict(color="#ef4444", size=10)
+        )
+    
     return fig
 
 
