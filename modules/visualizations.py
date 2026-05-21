@@ -36,24 +36,69 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
                       annotation_text=f"Max Pain: ₹{gamma_levels['max_pain']:,.0f}",
                       annotation_position="top left")
     fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
-    fig.update_layout(title="📊 Gamma Exposure Profile", xaxis_title="Strike (₹)",
-                      yaxis_title="GEX", barmode='relative', hovermode='x unified',
-                      template='plotly_dark', height=500)
     
-    support_level = gamma_levels.get("support")
-    resistance_level = gamma_levels.get("resistance")
+    # ── 1. COMPUTE KEY LEVELS FROM OI AND GEX ──────────────────────────────────
+    try:
+        oi_support = float(gex_df.loc[gex_df['put_oi'].idxmax(), 'strike'])
+        oi_resistance = float(gex_df.loc[gex_df['call_oi'].idxmax(), 'strike'])
+    except Exception:
+        oi_support, oi_resistance = None, None
 
-    # 1. Add Put Support Vertical Line (Max Positive GEX)
-    if isinstance(support_level, (int, float)):
-        fig.add_vline(
-            x=support_level, 
-            line_dash="dash", 
-            line_color="#22c55e",  # Green color matching Puts
-            line_width=1.5,
-            annotation_text=f"Put Support (₹{support_level:,.0f})", 
-            annotation_position="top left",
-            annotation_font=dict(color="#22c55e", size=10)
-        )
+    try:
+        gex_support = float(gex_df.loc[gex_df['put_gex'].idxmax(), 'strike'])
+        gex_resistance = float(gex_df.loc[gex_df['call_gex'].idxmin(), 'strike']) # Max negative GEX
+    except Exception:
+        gex_support = gamma_levels.get("support")
+        gex_resistance = gamma_levels.get("resistance")
+
+    # ── 2. ADD VISUAL MARKERS (LINES) TO THE CHART ─────────────────────────────
+    # Structural Walls (Highest Open Interest) -> Solid Lines
+    if oi_support:
+        fig.add_vline(x=oi_support, line_dash="solid", line_color="#22c55e", line_width=1.5)
+    if oi_resistance:
+        fig.add_vline(x=oi_resistance, line_dash="solid", line_color="#ef4444", line_width=1.5)
+
+    # Hedging Walls (Highest GEX Concentration) -> Dashed Lines
+    if gex_support:
+        fig.add_vline(x=gex_support, line_dash="dash", line_color="#22c55e", line_width=1.5)
+    if gex_resistance:
+        fig.add_vline(x=gex_resistance, line_dash="dash", line_color="#ef4444", line_width=1.5)
+
+    # ── 3. UPDATE LAYOUT WITH RIGHT MARGIN SPACING ─────────────────────────────
+    fig.update_layout(
+        title="📊 Gamma Exposure Profile", 
+        xaxis_title="Strike (₹)",
+        yaxis_title="GEX", 
+        barmode='relative', 
+        hovermode='x unified',
+        template='plotly_dark', 
+        height=500,
+        margin=dict(r=180)  # Adds space on the right side for the table box
+    )
+
+    # ── 4. DISPLAY SIDEBAR SUMMARY BOX ON RIGHT BORDER ─────────────────────────
+    annotation_text = (
+        "<b>⚠️ KEY LEVELS SUMMARY</b><br>"
+        "──────────────────────<br>"
+        f"🟢 Put Support (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>₹{oi_support:,.0f}</b><br>"
+        f"🟢 Put Support (GEX): &nbsp;&nbsp;&nbsp;<b>₹{gex_support:,.0f}</b><br>"
+        f"🔴 Call Resist (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>₹{oi_resistance:,.0f}</b><br>"
+        f"🔴 Call Resist (GEX): &nbsp;&nbsp;&nbsp;<b>₹{gex_resistance:,.0f}</b>"
+    )
+
+    fig.add_annotation(
+        text=annotation_text,
+        xref="paper", yref="paper",
+        x=1.03, y=0.5,  # Floats right outside chart canvas border
+        xanchor="left", yanchor="middle",
+        showarrow=False,
+        align="left",
+        font=dict(color="white", size=11, family="monospace"),
+        bordercolor="rgba(148, 163, 184, 0.4)",
+        borderwidth=1,
+        borderpad=8,
+        bgcolor="rgba(15, 23, 42, 0.85)"  # Clean background contrast
+    )
 
     # 2. Add Call Resistance Vertical Line (Max Negative GEX)
     if isinstance(resistance_level, (int, float)):
