@@ -24,12 +24,12 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     fig.add_trace(go.Bar(
         x=gex_df['strike'], y=gex_df['call_gex'], name='Call GEX', 
         marker_color='rgba(239,68,68,0.7)', 
-        hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:,.0f}<extra></extra>'
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:.0f}<extra></extra>'
     ))
     fig.add_trace(go.Bar(
         x=gex_df['strike'], y=gex_df['put_gex'], name='Put GEX', 
         marker_color='rgba(34,197,94,0.7)', 
-        hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:,.0f}<extra></extra>'
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:.0f}<extra></extra>'
     ))
 
     # ── 2. ADD VISUAL MARKER LINES ONLY (NO TEXT OVERLAYS) ─────────────────────
@@ -88,12 +88,12 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
 
     # ── 5. RENDER CONSOLIDATED COMPACT KEY LEVELS SUMMARY TABLE ───────────────
     # Format all numeric metrics safely
-    val_spot = f"{spot_price:,.0f}" if spot_price else "N/A"
-    val_mp = f"{max_pain:,.0f}" if max_pain else "N/A"
-    val_oi_supp = f"{oi_support:,.0f}" if oi_support else "N/A"
-    val_gex_supp = f"{gex_support:,.0f}" if gex_support else "N/A"
-    val_oi_res = f"{oi_resistance:,.0f}" if oi_resistance else "N/A"
-    val_gex_res = f"{gex_resistance:,.0f}" if gex_resistance else "N/A"
+    val_spot = f"{spot_price:.0f}" if spot_price else "N/A"
+    val_mp = f"{max_pain:.0f}" if max_pain else "N/A"
+    val_oi_supp = f"{oi_support:.0f}" if oi_support else "N/A"
+    val_gex_supp = f"{gex_support:.0f}" if gex_support else "N/A"
+    val_oi_res = f"{oi_resistance:.0f}" if oi_resistance else "N/A"
+    val_gex_res = f"{gex_resistance:.0f}" if gex_resistance else "N/A"
 
     annotation_text = (
         "<b>⚠️ KEY LEVELS SUMMARY</b><br>"
