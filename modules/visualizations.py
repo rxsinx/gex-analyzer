@@ -77,13 +77,18 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     )
 
     # ── 4. DISPLAY SIDEBAR SUMMARY BOX ON RIGHT BORDER ─────────────────────────
+    # ── 4. DISPLAY SIDEBAR SUMMARY BOX ON RIGHT BORDER ─────────────────────────
     annotation_text = (
         "<b>⚠️ KEY LEVELS SUMMARY</b><br>"
-        "──────────────────────<br>"
-        f"🟢 Put Support (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>₹{oi_support:,.0f}</b><br>"
-        f"🟢 Put Support (GEX): &nbsp;&nbsp;&nbsp;<b>₹{gex_support:,.0f}</b><br>"
-        f"🔴 Call Resist (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>₹{oi_resistance:,.0f}</b><br>"
-        f"🔴 Call Resist (GEX): &nbsp;&nbsp;&nbsp;<b>₹{gex_resistance:,.0f}</b>"
+        "─────────────────────────────<br>"
+        "🟢 <span style='color:#22c55e;'><b>Put Support (OI)</b></span><br>"
+        f"   Format: ── Solid Line &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>₹{oi_support:,.0f}</b><br><br>"
+        "🟢 <span style='color:#22c55e;'><b>Put Support (GEX)</b></span><br>"
+        f"   Format: ── Dashed Line &nbsp;&nbsp;&nbsp;&nbsp;<b>₹{gex_support:,.0f}</b><br><br>"
+        "🔴 <span style='color:#ef4444;'><b>Call Resist (OI)</b></span><br>"
+        f"   Format: ── Solid Line &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>₹{oi_resistance:,.0f}</b><br><br>"
+        "🔴 <span style='color:#ef4444;'><b>Call Resist (GEX)</b></span><br>"
+        f"   Format: ── Dashed Line &nbsp;&nbsp;&nbsp;&nbsp;<b>₹{gex_resistance:,.0f}</b>"
     )
 
     fig.add_annotation(
@@ -96,8 +101,8 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
         font=dict(color="white", size=11, family="monospace"),
         bordercolor="rgba(148, 163, 184, 0.4)",
         borderwidth=1,
-        borderpad=8,
-        bgcolor="rgba(15, 23, 42, 0.85)"  # Clean background contrast
+        borderpad=10,
+        bgcolor="rgba(15, 23, 42, 0.90)"  # High contrast background
     )
 
     return fig
