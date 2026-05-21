@@ -77,23 +77,19 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     )
 
     # ── 4. DISPLAY SIDEBAR SUMMARY BOX ON RIGHT BORDER ─────────────────────────
-    # Safely format numbers to string fallback if None encountered
-    val_oi_supp = f"₹{oi_support:,.0f}" if oi_support else "N/A"
-    val_gex_supp = f"₹{gex_support:,.0f}" if gex_support else "N/A"
-    val_oi_res = f"₹{oi_resistance:,.0f}" if oi_resistance else "N/A"
-    val_gex_res = f"₹{gex_resistance:,.0f}" if gex_resistance else "N/A"
+    # Safely format numbers to plain string fallback without currency symbols
+    val_oi_supp = f"{oi_support:,.0f}" if oi_support else "N/A"
+    val_gex_supp = f"{gex_support:,.0f}" if gex_support else "N/A"
+    val_oi_res = f"{oi_resistance:,.0f}" if oi_resistance else "N/A"
+    val_gex_res = f"{gex_resistance:,.0f}" if gex_resistance else "N/A"
 
     annotation_text = (
         "<b>⚠️ KEY LEVELS SUMMARY</b><br>"
         "─────────────────────────────<br>"
-        "<span style='color:#22c55e;'><b>── </b></span><br>"
-        f"Put Support (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_oi_supp}</b><br><br>"
-        "<span style='color:#22c55e;'><b>- - </b></span><br>"
-        f"Put Support (GEX): &nbsp;&nbsp;&nbsp;&nbsp;<b>{val_gex_supp}</b><br><br>"
-        "<span style='color:#ef4444;'><b>── </b></span><br>"
-        f"Call Resist (OI): &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{val_oi_res}</b><br><br>"
-        "<span style='color:#ef4444;'><b>- - </b></span><br>"
-        f"Call Resist (GEX): &nbsp;&nbsp;&nbsp;&nbsp;<b>{val_gex_res}</b>"
+        f"<span style='color:#22c55e;'><b>--- Put Support (OI):</b></span> &nbsp;<b>{val_oi_supp}</b><br><br>"
+        f"<span style='color:#22c55e;'><b>- - Put Support (GEX):</b></span> <b>{val_gex_supp}</b><br><br>"
+        f"<span style='color:#ef4444;'><b>--- Call Resist (OI):</b></span> &nbsp;<b>{val_oi_res}</b><br><br>"
+        f"<span style='color:#ef4444;'><b>- - Call Resist (GEX):</b></span> <b>{val_gex_res}</b>"
     )
 
     fig.add_annotation(
