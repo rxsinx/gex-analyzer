@@ -520,13 +520,26 @@ with st.sidebar:
                     df_f = filter_strikes(df, spot, 15)
                     st.warning("Widened strike range to ±15%.")
                 try:
+                    try:
                     gx  = calculate_gex(df_f, spot, expiry_date, risk_free_rate)
                     gl  = find_gamma_levels(gx, spot)
                     now = datetime.now(IST)
+                    # Fetch OHLC now if not already fetched (gives prev-day close)
+                    if not st.session_state.get("spot_ohlc") and kite_mgr:
+                        try:
+                            ohlc_init = kite_mgr.get_spot_ohlc(symbol)
+                        except Exception:
+                            ohlc_init = None
+                    else:
+                        ohlc_init = st.session_state.get("spot_ohlc")
+                    prev_close = (ohlc_init["close"]
+                                  if ohlc_init and ohlc_init.get("close")
+                                  else spot)
                     st.session_state.update({
                         "options_df":         df,
                         "spot_price":         spot,
-                        "prev_spot":          spot,
+                        "prev_spot":          prev_close,
+                        "spot_ohlc":          ohlc_init,
                         "gex_df":             gx,
                         "gamma_levels":       gl,
                         "data_loaded":        True,
