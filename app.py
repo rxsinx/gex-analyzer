@@ -711,7 +711,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             net_gex / 1e7,
             gamma_levels.get('total_put_oi', 0) / 1e5,
             gamma_levels.get('total_call_oi', 0) / 1e5,
-            gamma_levels.get('pcr', 1.0)
+            
         ]
     
         # Find precise ATM strike nearest to spot
