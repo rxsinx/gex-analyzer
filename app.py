@@ -710,23 +710,27 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         
         st.markdown("---")
     
-        # ─── INSERT NEW FEATURE HERE: HORIZONTAL STRIKE MATRIX ───
+        # ─── NEW FEATURE: HORIZONTAL STRIKE MATRIX (STRICT FORMATTING) ───
         st.subheader("🏁 Strike-by-Strike GEX & Positioning Matrix")
-
+    
         # 1. Sort options chain chronological order
         matrix_df = gex_df.sort_values(by="strike").copy()
+    
+        # Rule 1: Cast strike prices to integers immediately so they have no .0 decimals
+        matrix_df['strike'] = matrix_df['strike'].astype(int)
     
         # 2. Add strike-level PCR safely
         matrix_df['pcr_strike'] = matrix_df.apply(
             lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1
         )
     
-        # 3. Transpose relevant parameters into rows & Convert Values to Lakhs (1e5)
+        # 3. Transpose parameters into rows 
+        # Rule 2 & 3: Convert GEX values strictly to Crores (1e7) for the data table grid
         grid_data = {
             "Strike Price": matrix_df["strike"].tolist(),
-            "Call GEX (L)": (matrix_df["call_gex"] / 1e5).tolist(),
-            "Put GEX (L)": (matrix_df["put_gex"] / 1e5).tolist(),
-            "NET GEX (L)": ((matrix_df["call_gex"] + matrix_df["put_gex"]) / 1e5).tolist(),
+            "Call GEX (Cr)": (matrix_df["call_gex"] / 1e7).tolist(),
+            "Put GEX (Cr)": (matrix_df["put_gex"] / 1e7).tolist(),
+            "NET GEX (Cr)": ((matrix_df["call_gex"] + matrix_df["put_gex"]) / 1e7).tolist(),
             "Put OI (L)": (matrix_df["put_oi"] / 1e5).tolist(),
             "Call OI (L)": (matrix_df["call_oi"] / 1e5).tolist(),
             "PCR": matrix_df["pcr_strike"].tolist()
@@ -734,57 +738,60 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     
         display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
     
-        # 4. Append Total / Net Calculations Column on Right Margin (Also converted to Lakhs)
-        display_matrix["TOTAL / NET (L)"] = [
-            gex_df['call_gex'].sum() / 1e5,
-            gex_df['put_gex'].sum() / 1e5,
-            net_gex / 1e5,
+        # 4. Append Total / Net Calculations Column on Right Margin
+        # Rule 3: Keep GEX row totals in Crores (Cr) and OI row totals in Lakhs (L)
+        display_matrix["TOTAL / NET"] = [
+            gex_df['call_gex'].sum() / 1e7,
+            gex_df['put_gex'].sum() / 1e7,
+            net_gex / 1e7,
             gamma_levels.get('total_put_oi', 0) / 1e5,
             gamma_levels.get('total_call_oi', 0) / 1e5,
-            gamma_levels.get('pcr', 1.0) # PCR remains a absolute ratio
+            gamma_levels.get('pcr', 1.0)
         ]
     
         # Find the precise ATM Strike closest to spot
-        atm_strike = get_atm_strike(spot_price, si)
+        atm_strike = int(get_atm_strike(spot_price, si))
     
         # 5. Define Highlight Styler Logic
         def style_matrix_cells(df_matrix):
             # Create default styling base dataframe
             styles = pd.DataFrame('', index=df_matrix.index, columns=df_matrix.columns)
-            strikes_only = df_matrix.columns.drop("TOTAL / NET (L)")
+            strikes_only = df_matrix.columns.drop("TOTAL / NET")
             
             # Identify highlight targets
-            top1_call_gex = df_matrix.loc["Call GEX (L)", strikes_only].abs().nlargest(1).index[0]
-            top2_call_gex = df_matrix.loc["Call GEX (L)", strikes_only].abs().nlargest(2).index[-1]
+            top1_call_gex = df_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
+            top2_call_gex = df_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
             
-            top1_put_gex = df_matrix.loc["Put GEX (L)", strikes_only].abs().nlargest(1).index[0]
-            top2_put_gex = df_matrix.loc["Put GEX (L)", strikes_only].abs().nlargest(2).index[-1]
+            top1_put_gex = df_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
+            top2_put_gex = df_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
             
-            top1_net_gex = df_matrix.loc["NET GEX (L)", strikes_only].abs().nlargest(1).index[0]
-            top2_net_gex = df_matrix.loc["NET GEX (L)", strikes_only].abs().nlargest(2).index[-1]
+            # Rule 4 Fix: Calculate absolute largest elements across NET GEX row properly
+            top1_net_gex = df_matrix.loc["NET GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
+            top2_net_gex = df_matrix.loc["NET GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
             
             top1_call_oi = df_matrix.loc["Call OI (L)", strikes_only].nlargest(1).index[0]
             top1_put_oi = df_matrix.loc["Put OI (L)", strikes_only].nlargest(1).index[0]
     
             # Rule 4: Distinctly color background and text of the precise ATM strike column
             if atm_strike in df_matrix.columns:
-                styles.loc[:, atm_strike] = 'background-color: rgba(255, 170, 0, 0.25); border: 2px solid #ffaa00; font-weight: bold;'
+                styles.loc[:, atm_strike] = 'background-color: rgba(255, 170, 0, 0.22); border: 2px solid #ffaa00;'
     
-            # Overlay GEX Heatmaps (Keeping track of highest and 2nd highest nodes)
-            styles.loc["Call GEX (L)", top1_call_gex] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold;'
-            styles.loc["Call GEX (L)", top2_call_gex] = 'background-color: rgba(239, 68, 68, 0.35); color: white;'
+            # Overlay GEX Heatmaps (Highest and 2nd highest nodes highlighted)
+            styles.loc["Call GEX (Cr)", top1_call_gex] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold;'
+            styles.loc["Call GEX (Cr)", top2_call_gex] = 'background-color: rgba(239, 68, 68, 0.35); color: white;'
             
-            styles.loc["Put GEX (L)", top1_put_gex] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
-            styles.loc["Put GEX (L)", top2_put_gex] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
+            styles.loc["Put GEX (Cr)", top1_put_gex] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
+            styles.loc["Put GEX (Cr)", top2_put_gex] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
             
-            styles.loc["NET GEX (L)", top1_net_gex] = 'background-color: rgba(139, 92, 246, 0.6); color: white; font-weight: bold;'
-            styles.loc["NET GEX (L)", top2_net_gex] = 'background-color: rgba(139, 92, 246, 0.35); color: white;'
+            # Rule 4 Active Highlight Output for NET GEX (both positive & negative fields handled safely)
+            styles.loc["NET GEX (Cr)", top1_net_gex] = 'background-color: rgba(139, 92, 246, 0.6); color: white; font-weight: bold;'
+            styles.loc["NET GEX (Cr)", top2_net_gex] = 'background-color: rgba(139, 92, 246, 0.35); color: white;'
             
             styles.loc["Call OI (L)", top1_call_oi] = 'background-color: rgba(245, 158, 11, 0.5); font-weight: bold; color: white;'
             styles.loc["Put OI (L)", top1_put_oi] = 'background-color: rgba(59, 130, 246, 0.5); font-weight: bold; color: white;'
             
-            # Style the calculation summary column index separately
-            styles["TOTAL / NET (L)"] = 'background-color: rgba(148, 163, 184, 0.15); font-weight: bold; border-left: 2px solid gray;'
+            # Style the final calculation summary column index separately
+            styles["TOTAL / NET"] = 'background-color: rgba(148, 163, 184, 0.15); font-weight: bold; border-left: 2px solid gray;'
             return styles
     
         # Injecting global CSS to guarantee Row Headings, Column Headers, and ATM values are bolded
@@ -801,7 +808,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             </style>
         """, unsafe_allow_html=True)
     
-        # 6. Rule 1 & 2: Format layout cleanly to exactly 2-digit decimals
+        # Render styled matrix with a uniform 2-digit decimal conversion filter layout
         st.dataframe(
             display_matrix.style.apply(style_matrix_cells, axis=None).format("{:.2f}"),
             use_container_width=True
