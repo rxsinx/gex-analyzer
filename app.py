@@ -597,10 +597,16 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     max_put_oi_strike  = gamma_levels.get("max_put_oi_strike", spot_price)
 
     # ── ⚡ LIVE STATUS BAR ────────────────────────────────────────────────────
-    spot_delta   = spot_price - prev_spot
-    spot_delta_pct = (spot_delta / prev_spot * 100) if prev_spot else 0
-    tick_arrow   = "▲" if spot_delta > 0 else "▼" if spot_delta < 0 else "●"
-    tick_class   = "tick-up" if spot_delta > 0 else "tick-dn" if spot_delta < 0 else "tick-flat"
+    tick_delta = spot_price - prev_spot
+
+    ohlc       = st.session_state.spot_ohlc or {}
+    day_close  = ohlc.get("close") or prev_spot          # prev session close
+    spot_delta     = spot_price - day_close
+    spot_delta_pct = (spot_delta / day_close * 100) if day_close else 0
+
+    # Arrow direction tracks tick-to-tick momentum, not day change
+    tick_arrow  = "▲" if tick_delta > 0 else "▼" if tick_delta < 0 else "●"
+    tick_class  = "tick-up" if tick_delta > 0 else "tick-dn" if tick_delta < 0 else "tick-flat"
 
     now_ist = datetime.now(IST)
     chain_age_s = int((now_ist - st.session_state.last_update).total_seconds()) \
