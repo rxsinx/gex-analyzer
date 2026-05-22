@@ -783,18 +783,18 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         # ─── IMPROVEMENT: APPEND THE "(R)" SUFFIX TO THE STRINGS DATA ───
         display_matrix_fmt.loc["Call GEX (Cr)", top1_call_gex] += " (R)"
         display_matrix_fmt.loc["Call GEX (Cr)", top2_call_gex] += " (R)"
-        display_matrix_fmt.loc["Put GEX (Cr)", top1_put_gex] += " (R)"
-        display_matrix_fmt.loc["Put GEX (Cr)", top2_put_gex] += " (R)"
+        display_matrix_fmt.loc["Put GEX (Cr)", top1_put_gex] += " (S)"
+        display_matrix_fmt.loc["Put GEX (Cr)", top2_put_gex] += " (S)"
     
         if top1_net_neg: display_matrix_fmt.loc["NET GEX (Cr)", top1_net_neg] += " (R)"
         if top2_net_neg: display_matrix_fmt.loc["NET GEX (Cr)", top2_net_neg] += " (R)"
-        if top1_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top1_net_pos] += " (R)"
-        if top2_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top2_net_pos] += " (R)"
+        if top1_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top1_net_pos] += " (S)"
+        if top2_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top2_net_pos] += " (S)"
     
         display_matrix_fmt.loc["Put OI (L)", top1_put_oi] += " (R)"
         display_matrix_fmt.loc["Put OI (L)", top2_put_oi] += " (R)"
-        display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (R)"
-        display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (R)"
+        display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (S)"
+        display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (S)"
     
         # 5. Define Highlight Styler CSS Engine
         def style_matrix_cells(df_matrix):
@@ -837,10 +837,12 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             <style>
                 .stDataFrame th, [data-testid="stDataFrame"] div[role="row"] div[role="columnheader"] {
                     font-weight: bold !important;
-                    font-size: 0.85rem !important;
+                    font-size: 0.72rem !important;
+                    padding: 4px 6px !important;
                 }
                 [data-testid="stDataFrame"] div[role="gridcell"] {
                     font-weight: 500;
+                    font-size: 0.72rem !important;
                 }
             </style>
         """, unsafe_allow_html=True)
