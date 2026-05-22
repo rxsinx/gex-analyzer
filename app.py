@@ -712,7 +712,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     
         # ─── NEW FEATURE: HORIZONTAL STRIKE MATRIX (STRICT FORMATTING) ───
         st.subheader("🏁 Strike-by-Strike GEX & Positioning Matrix")
-    
+
         # 1. Sort options chain chronological order
         matrix_df = gex_df.sort_values(by="strike").copy()
     
@@ -724,8 +724,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1
         )
     
-        # 3. Transpose parameters into rows 
-        # Rule 2 & 3: Convert GEX values strictly to Crores (1e7) for the data table grid
+        # 3. Transpose parameters into rows & scale units
         grid_data = {
             "Strike Price": matrix_df["strike"].tolist(),
             "Call GEX (Cr)": (matrix_df["call_gex"] / 1e7).tolist(),
@@ -739,7 +738,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
     
         # 4. Append Total / Net Calculations Column on Right Margin
-        # Rule 3: Keep GEX row totals in Crores (Cr) and OI row totals in Lakhs (L)
         display_matrix["TOTAL / NET"] = [
             gex_df['call_gex'].sum() / 1e7,
             gex_df['put_gex'].sum() / 1e7,
@@ -751,53 +749,92 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     
         # Find the precise ATM Strike closest to spot
         atm_strike = int(get_atm_strike(spot_price, si))
+        strikes_only = display_matrix.columns.drop("TOTAL / NET")
     
-        # 5. Define Highlight Styler Logic
+        # ─── PRE-CALCULATE ALL TARGET HIGHLIGHTS FROM NUMERIC DATA ───
+        top1_call_gex = display_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
+        top2_call_gex = display_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
+    
+        top1_put_gex = display_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
+        top2_put_gex = display_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
+    
+        # Fix 1: Filter and isolate -ve NET GEX to find the lowest and 2nd lowest
+        net_neg_series = display_matrix.loc["NET GEX (Cr)", strikes_only]
+        net_neg_series = net_neg_series[net_neg_series < 0]
+        top1_net_neg = net_neg_series.nsmallest(1).index[0] if not net_neg_series.empty else None
+        top2_net_neg = net_neg_series.nsmallest(2).index[-1] if len(net_neg_series) >= 2 else None
+    
+        # Fix 1: Filter and isolate +ve NET GEX to find the highest and 2nd highest
+        net_pos_series = display_matrix.loc["NET GEX (Cr)", strikes_only]
+        net_pos_series = net_pos_series[net_pos_series > 0]
+        top1_net_pos = net_pos_series.nlargest(1).index[0] if not net_pos_series.empty else None
+        top2_net_pos = net_pos_series.nlargest(2).index[-1] if len(net_pos_series) >= 2 else None
+    
+        # Fix 2: Track top 1 and top 2 targets for both Open Interest rows independently
+        top1_put_oi = display_matrix.loc["Put OI (L)", strikes_only].nlargest(1).index[0]
+        top2_put_oi = display_matrix.loc["Put OI (L)", strikes_only].nlargest(2).index[-1]
+    
+        top1_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(1).index[0]
+        top2_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(2).index[-1]
+    
+        # Convert entire matrix to standard 2-decimal string formatting base
+        display_matrix_fmt = display_matrix.map(lambda x: f"{x:.2f}")
+    
+        # ─── IMPROVEMENT: APPEND THE "(R)" SUFFIX TO THE STRINGS DATA ───
+        display_matrix_fmt.loc["Call GEX (Cr)", top1_call_gex] += " (R)"
+        display_matrix_fmt.loc["Call GEX (Cr)", top2_call_gex] += " (R)"
+        display_matrix_fmt.loc["Put GEX (Cr)", top1_put_gex] += " (R)"
+        display_matrix_fmt.loc["Put GEX (Cr)", top2_put_gex] += " (R)"
+    
+        if top1_net_neg: display_matrix_fmt.loc["NET GEX (Cr)", top1_net_neg] += " (R)"
+        if top2_net_neg: display_matrix_fmt.loc["NET GEX (Cr)", top2_net_neg] += " (R)"
+        if top1_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top1_net_pos] += " (R)"
+        if top2_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top2_net_pos] += " (R)"
+    
+        display_matrix_fmt.loc["Put OI (L)", top1_put_oi] += " (R)"
+        display_matrix_fmt.loc["Put OI (L)", top2_put_oi] += " (R)"
+        display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (R)"
+        display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (R)"
+    
+        # 5. Define Highlight Styler CSS Engine
         def style_matrix_cells(df_matrix):
-            # Create default styling base dataframe
             styles = pd.DataFrame('', index=df_matrix.index, columns=df_matrix.columns)
-            strikes_only = df_matrix.columns.drop("TOTAL / NET")
             
-            # Identify highlight targets
-            top1_call_gex = df_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
-            top2_call_gex = df_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
-            
-            top1_put_gex = df_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
-            top2_put_gex = df_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
-            
-            # Rule 4 Fix: Calculate absolute largest elements across NET GEX row properly
-            top1_net_gex = df_matrix.loc["NET GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
-            top2_net_gex = df_matrix.loc["NET GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
-            
-            top1_call_oi = df_matrix.loc["Call OI (L)", strikes_only].nlargest(1).index[0]
-            top1_put_oi = df_matrix.loc["Put OI (L)", strikes_only].nlargest(1).index[0]
-    
-            # Rule 4: Distinctly color background and text of the precise ATM strike column
+            # Apply base ATM column highlight first (so specific row highlights lay on top)
             if atm_strike in df_matrix.columns:
-                styles.loc[:, atm_strike] = 'background-color: rgba(255, 170, 0, 0.22); border: 2px solid #ffaa00;'
+                styles.loc[:, atm_strike] = 'background-color: rgba(255, 170, 0, 0.15); border: 2px solid #ffaa00;'
     
-            # Overlay GEX Heatmaps (Highest and 2nd highest nodes highlighted)
+            # Call GEX Highlighting
             styles.loc["Call GEX (Cr)", top1_call_gex] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold;'
             styles.loc["Call GEX (Cr)", top2_call_gex] = 'background-color: rgba(239, 68, 68, 0.35); color: white;'
             
+            # Put GEX Highlighting
             styles.loc["Put GEX (Cr)", top1_put_gex] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
             styles.loc["Put GEX (Cr)", top2_put_gex] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
             
-            # Rule 4 Active Highlight Output for NET GEX (both positive & negative fields handled safely)
-            styles.loc["NET GEX (Cr)", top1_net_gex] = 'background-color: rgba(139, 92, 246, 0.6); color: white; font-weight: bold;'
-            styles.loc["NET GEX (Cr)", top2_net_gex] = 'background-color: rgba(139, 92, 246, 0.35); color: white;'
+            # Fix 1 Colors: Negative Net GEX Highlights (Purple Theme)
+            if top1_net_neg: styles.loc["NET GEX (Cr)", top1_net_neg] = 'background-color: rgba(139, 92, 246, 0.6); color: white; font-weight: bold;'
+            if top2_net_neg: styles.loc["NET GEX (Cr)", top2_net_neg] = 'background-color: rgba(139, 92, 246, 0.35); color: white;'
             
-            styles.loc["Call OI (L)", top1_call_oi] = 'background-color: rgba(245, 158, 11, 0.5); font-weight: bold; color: white;'
-            styles.loc["Put OI (L)", top1_put_oi] = 'background-color: rgba(59, 130, 246, 0.5); font-weight: bold; color: white;'
+            # Fix 1 Colors: Positive Net GEX Highlights (Green Theme)
+            if top1_net_pos: styles.loc["NET GEX (Cr)", top1_net_pos] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
+            if top2_net_pos: styles.loc["NET GEX (Cr)", top2_net_pos] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
             
-            # Style the final calculation summary column index separately
+            # Fix 2 Colors: Put OI Highlights (Blue Theme with White Font)
+            styles.loc["Put OI (L)", top1_put_oi] = 'background-color: rgba(59, 130, 246, 0.6); color: white; font-weight: bold;'
+            styles.loc["Put OI (L)", top2_put_oi] = 'background-color: rgba(59, 130, 246, 0.35); color: white;'
+            
+            # Fix 2 Colors: Call OI Highlights (Orange Theme with White Font)
+            styles.loc["Call OI (L)", top1_call_oi] = 'background-color: rgba(245, 158, 11, 0.6); color: white; font-weight: bold;'
+            styles.loc["Call OI (L)", top2_call_oi] = 'background-color: rgba(245, 158, 11, 0.35); color: white;'
+            
+            # Style calculation summary margin column
             styles["TOTAL / NET"] = 'background-color: rgba(148, 163, 184, 0.15); font-weight: bold; border-left: 2px solid gray;'
             return styles
     
-        # Injecting global CSS to guarantee Row Headings, Column Headers, and ATM values are bolded
+        # Injecting global CSS layout controls
         st.markdown("""
             <style>
-                /* Rule 3: Bold row indices and table column headers */
                 .stDataFrame th, [data-testid="stDataFrame"] div[role="row"] div[role="columnheader"] {
                     font-weight: bold !important;
                     font-size: 0.85rem !important;
@@ -808,9 +845,9 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             </style>
         """, unsafe_allow_html=True)
     
-        # Render styled matrix with a uniform 2-digit decimal conversion filter layout
+        # Render pre-formatted text grid matrix directly
         st.dataframe(
-            display_matrix.style.apply(style_matrix_cells, axis=None).format("{:.2f}"),
+            display_matrix_fmt.style.apply(style_matrix_cells, axis=None),
             use_container_width=True
         )
     
