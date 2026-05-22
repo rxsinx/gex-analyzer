@@ -640,8 +640,17 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     m3.metric("High",          f"₹{ohlc['high']:,.0f}"  if ohlc else "—")
     m4.metric("Low",           f"₹{ohlc['low']:,.0f}"   if ohlc else "—")
     m5.metric("Prev",          f"₹{ohlc['close']:,.0f}" if ohlc else "—")
-    pcr_icon = "🐻" if pcr>1.2 else "🐂" if pcr<0.8 else "➡️"
-    m6.metric(f"{pcr_icon} PCR", f"{pcr:.3f}")
+
+    # ── CALCULATE ATM STRIKE PCR ONLY ──
+    # Isolate the specific options chain contract row closest to active spot price
+    atm_idx = (gex_df["strike"] - spot_price).abs().idxmin()
+    atm_row = gex_df.loc[atm_idx]
+    
+    # Calculate the exact ratio strictly for the At-The-Money strike row
+    atm_pcr = atm_row["put_oi"] / atm_row["call_oi"] if atm_row["call_oi"] > 0 else 0.00
+    
+    m6.metric("➡️ PCR",        f"{atm_pcr:.2f}")
+    
     m7.metric("🎯 Max Pain",   f"₹{max_pain:,.0f}",
               delta=f"{max_pain - spot_price:+.0f}")
     m8.metric("🔄 Gamma Flip", f"₹{gamma_flip:,.0f}",
@@ -653,8 +662,8 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     n2.metric("🟢 Put GEX",         format_number(gex_df['put_gex'].sum()))
     n3.metric("💹 Net GEX",         format_number(net_gex))
     n4.metric("📦 Lot / Interval",  f"{lot_size} / ₹{si:.0f}")
-    n5.metric("📈 Call OI",         f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
-    n6.metric("📉 Put OI",          f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
+    n5.metric("📈 Total Call OI",         f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
+    n6.metric("📉 Total Put OI",          f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
     n7.metric("🚧 Call Wall",       f"₹{max_call_oi_strike:,.0f}")
     n8.metric("🛡️ Put Wall",        f"₹{max_put_oi_strike:,.0f}")
 
@@ -936,7 +945,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         qc.metric("🔄 HVL / Flip",  f"₹{gamma_levels.get('gamma_flip', spot_price):,.0f}",
                   delta=f"{(gamma_levels.get('gamma_flip', spot_price) - spot_price):+.0f}")
         qd.metric("📊 Net GEX",     format_number(gamma_levels.get('total_gex', 0)))
-        qe.metric("📐 PCR",         f"{gamma_levels.get('pcr', 1.0):.3f}")
+        qe.metric("📐 PCR",         f"{atm_pcr:.2f}")
  
         st.markdown("---")
  
