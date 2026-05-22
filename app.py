@@ -713,11 +713,14 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             net_gex / 1e7,
             gamma_levels.get('total_put_oi', 0) / 1e5,
             gamma_levels.get('total_call_oi', 0) / 1e5,
-            np.nan,  # PCR Total
-            np.nan,  # <── ADDED: Blanks out Call Premium Total
-            np.nan   # <── ADDED: Blanks out Put Premium Total
+            pd.NA,  # PCR Total
+            pd.NA,  # <── ADDED: Blanks out Call Premium Total
+            pd.NA   # <── ADDED: Blanks out Put Premium Total
         ]
-    
+        
+        # String format converter with suffix markers (Catches pd.NA entries cleanly)
+        display_matrix_fmt = display_matrix.map(lambda x: "—" if pd.isna(x) else f"{x:.2f}")
+        
         # Find precise ATM strike nearest to spot
         atm_strike = int(get_atm_strike(spot_price, si))
         strikes_only = display_matrix.columns.drop("TOTAL / NET")
