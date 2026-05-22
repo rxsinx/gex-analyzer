@@ -699,7 +699,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "NET GEX (Cr)": ((matrix_df["call_gex"] + matrix_df["put_gex"]) / 1e7).tolist(),
             "Put OI (L)": (matrix_df["put_oi"] / 1e5).tolist(),
             "Call OI (L)": (matrix_df["call_oi"] / 1e5).tolist(),
-            "PCR": matrix_df["pcr_strike"].tolist()
+            "PCR": matrix_df["pcr_strike"].tolist(),
             "Call Premium": matrix_df["call_ltp"].tolist(),  # <── ADDED: Adjust column name if your df uses 'call_price'
             "Put Premium": matrix_df["put_ltp"].tolist()
         }
