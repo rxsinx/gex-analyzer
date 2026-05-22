@@ -683,7 +683,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     ])
 
     with tab1:
-    st.subheader("Gamma Exposure Profile")
+      st.subheader("Gamma Exposure Profile")
     st.plotly_chart(plot_gex_profile(gex_df, spot_price, gamma_levels), use_container_width=True)
     
     # ─── REFACTORED: KEY LEVELS & GEX SUMMARY MATRIX ───
