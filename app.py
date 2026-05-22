@@ -683,40 +683,15 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     ])
 
     with tab1:
+        # ─── a. Gamma Exposure Profile (Chart) ───
         st.subheader("Gamma Exposure Profile")
         st.plotly_chart(plot_gex_profile(gex_df, spot_price, gamma_levels), use_container_width=True)
         
-        # ─── REFACTORED: KEY LEVELS & GEX SUMMARY MATRIX ───
-        st.markdown("##### 📋 Terminal Executive Summary")
-        summary_data = {
-            "Metric / Level": ["ATM Strike", "Support (Max +GEX)", "Resistance (Max -GEX)", "Gamma Flip", "Max Pain"],
-            "Strike Price": [
-                f"₹{get_atm_strike(spot_price, si):,}",
-                f"₹{gamma_levels.get('support', 0):,}" if isinstance(gamma_levels.get('support'), (int, float)) else str(gamma_levels.get('support')),
-                f"₹{gamma_levels.get('resistance', 0):,}" if isinstance(gamma_levels.get('resistance'), (int, float)) else str(gamma_levels.get('resistance')),
-                f"₹{gamma_flip:,.0f}",
-                f"₹{max_pain:,.0f}"
-            ],
-            "GEX Category": ["Call GEX", "Put GEX", "Net GEX", "GEX Above Spot", "GEX Below Spot"],
-            "Value (Cr)": [
-                format_number(gex_df['call_gex'].sum()),
-                format_number(gex_df['put_gex'].sum()),
-                format_number(net_gex),
-                format_number(gamma_levels.get('net_gex_above_spot', 0)),
-                format_number(gamma_levels.get('net_gex_below_spot', 0))
-            ]
-        }
-        st.table(pd.DataFrame(summary_data))
-        
-        st.markdown("---")
-    
-        # ─── NEW FEATURE: HORIZONTAL STRIKE MATRIX (STRICT FORMATTING) ───
+        # ─── b. Strike-by-Strike GEX & Positioning Matrix ───
         st.subheader("🏁 Strike-by-Strike GEX & Positioning Matrix")
-
+    
         # 1. Sort options chain chronological order
         matrix_df = gex_df.sort_values(by="strike").copy()
-    
-        # Rule 1: Cast strike prices to integers immediately so they have no .0 decimals
         matrix_df['strike'] = matrix_df['strike'].astype(int)
     
         # 2. Add strike-level PCR safely
@@ -724,7 +699,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1
         )
     
-        # 3. Transpose parameters into rows & scale units
+        # 3. Transpose parameters into rows & scale units to Cr and L
         grid_data = {
             "Strike Price": matrix_df["strike"].tolist(),
             "Call GEX (Cr)": (matrix_df["call_gex"] / 1e7).tolist(),
@@ -747,40 +722,38 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             gamma_levels.get('pcr', 1.0)
         ]
     
-        # Find the precise ATM Strike closest to spot
+        # Find precise ATM strike nearest to spot
         atm_strike = int(get_atm_strike(spot_price, si))
         strikes_only = display_matrix.columns.drop("TOTAL / NET")
     
-        # ─── PRE-CALCULATE ALL TARGET HIGHLIGHTS FROM NUMERIC DATA ───
+        # Pre-calculate highlight positions from numeric values
         top1_call_gex = display_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
         top2_call_gex = display_matrix.loc["Call GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
     
         top1_put_gex = display_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(1).index[0]
         top2_put_gex = display_matrix.loc["Put GEX (Cr)", strikes_only].abs().nlargest(2).index[-1]
     
-        # Fix 1: Filter and isolate -ve NET GEX to find the lowest and 2nd lowest
+        # Filter and isolate -ve/lowest NET GEX
         net_neg_series = display_matrix.loc["NET GEX (Cr)", strikes_only]
         net_neg_series = net_neg_series[net_neg_series < 0]
         top1_net_neg = net_neg_series.nsmallest(1).index[0] if not net_neg_series.empty else None
         top2_net_neg = net_neg_series.nsmallest(2).index[-1] if len(net_neg_series) >= 2 else None
     
-        # Fix 1: Filter and isolate +ve NET GEX to find the highest and 2nd highest
+        # Filter and isolate +ve/highest NET GEX
         net_pos_series = display_matrix.loc["NET GEX (Cr)", strikes_only]
         net_pos_series = net_pos_series[net_pos_series > 0]
         top1_net_pos = net_pos_series.nlargest(1).index[0] if not net_pos_series.empty else None
         top2_net_pos = net_pos_series.nlargest(2).index[-1] if len(net_pos_series) >= 2 else None
     
-        # Fix 2: Track top 1 and top 2 targets for both Open Interest rows independently
+        # Open Interest ranking checks
         top1_put_oi = display_matrix.loc["Put OI (L)", strikes_only].nlargest(1).index[0]
         top2_put_oi = display_matrix.loc["Put OI (L)", strikes_only].nlargest(2).index[-1]
     
         top1_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(1).index[0]
         top2_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(2).index[-1]
     
-        # Convert entire matrix to standard 2-decimal string formatting base
+        # String format converter with suffix markers
         display_matrix_fmt = display_matrix.map(lambda x: f"{x:.2f}")
-    
-        # ─── IMPROVEMENT: APPEND THE "(R)" SUFFIX TO THE STRINGS DATA ───
         display_matrix_fmt.loc["Call GEX (Cr)", top1_call_gex] += " (R)"
         display_matrix_fmt.loc["Call GEX (Cr)", top2_call_gex] += " (R)"
         display_matrix_fmt.loc["Put GEX (Cr)", top1_put_gex] += " (S)"
@@ -796,50 +769,48 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (R)"
         display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (R)"
     
-        # 5. Define Highlight Styler CSS Engine
+        # Styler layout generation engine
         def style_matrix_cells(df_matrix):
             styles = pd.DataFrame('', index=df_matrix.index, columns=df_matrix.columns)
             
-            # Apply base ATM column highlight first (so specific row highlights lay on top)
             if atm_strike in df_matrix.columns:
                 styles.loc[:, atm_strike] = 'background-color: rgba(255, 170, 0, 0.15); border: 2px solid #ffaa00;'
     
-            # Call GEX Highlighting
             styles.loc["Call GEX (Cr)", top1_call_gex] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold;'
             styles.loc["Call GEX (Cr)", top2_call_gex] = 'background-color: rgba(239, 68, 68, 0.35); color: white;'
             
-            # Put GEX Highlighting
             styles.loc["Put GEX (Cr)", top1_put_gex] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
             styles.loc["Put GEX (Cr)", top2_put_gex] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
             
-            # Fix 1 Colors: Negative Net GEX Highlights (Purple Theme)
             if top1_net_neg: styles.loc["NET GEX (Cr)", top1_net_neg] = 'background-color: rgba(139, 92, 246, 0.6); color: white; font-weight: bold;'
             if top2_net_neg: styles.loc["NET GEX (Cr)", top2_net_neg] = 'background-color: rgba(139, 92, 246, 0.35); color: white;'
-            
-            # Fix 1 Colors: Positive Net GEX Highlights (Green Theme)
             if top1_net_pos: styles.loc["NET GEX (Cr)", top1_net_pos] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
             if top2_net_pos: styles.loc["NET GEX (Cr)", top2_net_pos] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
             
-            # Fix 2 Colors: Put OI Highlights (Blue Theme with White Font)
             styles.loc["Put OI (L)", top1_put_oi] = 'background-color: rgba(59, 130, 246, 0.6); color: white; font-weight: bold;'
             styles.loc["Put OI (L)", top2_put_oi] = 'background-color: rgba(59, 130, 246, 0.35); color: white;'
-            
-            # Fix 2 Colors: Call OI Highlights (Orange Theme with White Font)
             styles.loc["Call OI (L)", top1_call_oi] = 'background-color: rgba(245, 158, 11, 0.6); color: white; font-weight: bold;'
             styles.loc["Call OI (L)", top2_call_oi] = 'background-color: rgba(245, 158, 11, 0.35); color: white;'
             
-            # Style calculation summary margin column
             styles["TOTAL / NET"] = 'background-color: rgba(148, 163, 184, 0.15); font-weight: bold; border-left: 2px solid gray;'
             return styles
     
-        # Injecting global CSS layout controls
         st.markdown("""
             <style>
-                .stDataFrame th, [data-testid="stDataFrame"] div[role="row"] div[role="columnheader"] {
-                    font-weight: bold !important;
+                /* Column Headers (Strikes) Styling */
+                .stDataFrame th, [data-testid="stDataFrame"] div[role="row"] div[role="columnheader"] p {
+                    font-weight: 800 !important;
+                    color: #000000 !important;
                     font-size: 0.72rem !important;
-                    padding: 4px 6px !important;
                 }
+                /* Row Headers (Metrics Label Column) Styling */
+                [data-testid="stDataFrame"] div[role="rowheader"] p, [data-testid="stDataFrame"] div[role="rowheader"] {
+                    font-weight: 800 !important;
+                    color: #000000 !important;
+                    font-size: 0.72rem !important;
+                    background-color: rgba(241, 245, 249, 0.7) !important;
+                }
+                /* Grid Values Scaling */
                 [data-testid="stDataFrame"] div[role="gridcell"] {
                     font-weight: 500;
                     font-size: 0.72rem !important;
@@ -847,17 +818,43 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             </style>
         """, unsafe_allow_html=True)
     
-        # Render pre-formatted text grid matrix directly
-        st.dataframe(
-            display_matrix_fmt.style.apply(style_matrix_cells, axis=None),
-            use_container_width=True
-        )
-    
+        st.dataframe(display_matrix_fmt.style.apply(style_matrix_cells, axis=None), use_container_width=True)
         st.markdown("---")
+        
+        # ─── c. Cumulative GEX Profile — Dealer Hedging Pressure (Chart) ───
         st.subheader("Cumulative GEX Profile — Dealer Hedging Pressure")
-        st.plotly_chart(
-            plot_spot_gex_levels(gex_df, spot_price, gamma_levels, 500),
-            use_container_width=True)
+        st.plotly_chart(plot_spot_gex_levels(gex_df, spot_price, gamma_levels, 500), use_container_width=True)
+        st.markdown("---")
+    
+        # ─── d. 📝 Technical Reference Note ───
+        st.markdown("### 📝 Technical Reference Note: GEX Matrix Trading Architecture")
+        st.markdown("""
+        The **Strike-by-Strike GEX & Positioning Matrix** processes open options interest parameters directly into 
+        dealer hedging obligations. Because options market makers must sustain directional delta neutrality, their automated, 
+        systematic hedging tasks establish strict friction zones and breakout corridors across the daily tape.
+        
+        * **The Short-Call GEX Wall:** Located at strikes displaying the highest negative (**-ve**) Call GEX values, 
+            marked with the **`(R)`** resistance suffix. As the spot engine edges into this boundary, index gamma hits its peak slope and flattens. 
+            Concurrently, Implied Volatility ($IV$) undergoes compression against institutional overhead paper. This environment halts the dealers' 
+            need to purchase additional index futures to hedge, causing upward momentum to break down or compress.
+        * **The Long-Put GEX Wall:** Located at strikes displaying the highest positive (**+ve**) Put GEX values, 
+            marked with the **`(S)`** support suffix. As the spot engine slides downward into these nodes, index options transition into At-The-Money structures. 
+            Because dealers carry net-long inventory across these structures, their underlying systemic delta builds directional exposure. 
+            To level out books, dealers fire size buy programs in the cash or futures asset class, establishing a structural floor.
+        """)
+        st.markdown("---")
+    
+        # ─── e. Summary Cheat Sheet for Intraday Monitoring ───
+        st.markdown("### 🏁 Summary Cheat Sheet for Intraday Monitoring")
+        st.markdown("""
+        | Matrix Condition | Structural State | Market Velocity Impact | Tactical Action |
+        | :--- | :--- | :--- | :--- |
+        | **Spot in unhighlighted matrix spaces** | Minimal Dealer Friction | Elevated velocity; chart slices through zones cleanly | Avoid opening directional entries within empty pockets. |
+        | **Spot tracking into Red `(R)` Call GEX Wall** | Gamma Deceleration / $IV$ Crush | Upward momentum gridlocks near the strike | Exit long momentum frames; scale into structural credit spreads above. |
+        | **Spot clearing cleanly ABOVE Red `(R)` Call GEX Wall** | Short-Call Gamma Squeeze | Aggressive, non-linear vertical melt-up | Stop out overhead shorts immediately; trade long via ATM Call instruments. |
+        | **Spot trending into Green `(S)` Put GEX Wall** | Negative Gamma Acceleration | Fear parameters expand; downward run speeds up | Keep target short structures running until the exact wall coordinates are hit. |
+        | **Spot landing on Green `(S)` Put GEX Wall** | Institutional Buy Program | Immediate downward halt; volume blocks print | Flat intraday shorts; observe structural candle wick patterns for trend reversal. |
+        """)
 
     with tab2:
         st.subheader("Open Interest & Volume Analysis")
