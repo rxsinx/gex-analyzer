@@ -556,24 +556,7 @@ with st.sidebar:
                     st.error(f"GEX calculation error: {e}")
 
     # ── Sidebar status ────────────────────────────────────────────────────────
-    if st.session_state.data_loaded:
-        st.markdown("---")
-        live_dot = '<span class="live-dot"></span>' if st.session_state.live_mode else "🔵 "
-        st.markdown(f'{live_dot}**{symbol}**', unsafe_allow_html=True)
-        if st.session_state.spot_price:
-            st.metric("Spot", f"₹{st.session_state.spot_price:,.2f}")
-        st.caption(f"📅 {st.session_state.selected_expiry}")
-        st.caption(f"📦 Lot {st.session_state.lot_size} · 📏 ₹{st.session_state.strike_interval:.0f}")
-        if st.session_state.last_update:
-            st.caption(f"📊 Chain: {st.session_state.last_update.strftime('%H:%M:%S')}")
-        if st.session_state.last_spot_update:
-            st.caption(f"💹 Spot: {st.session_state.last_spot_update.strftime('%H:%M:%S')}")
-        try:
-            mkt = get_market_status()
-            e   = "🟢" if "Open" in mkt.get("market_state","") else "🔴"
-            st.caption(f"{e} {mkt['market_state']}")
-        except Exception:
-            pass
+    
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -847,7 +830,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         # ─── e. Summary Cheat Sheet for Intraday Monitoring ───
         st.markdown("### 🏁 Summary Cheat Sheet for Intraday Monitoring")
         st.markdown("""
-        | Matrix Condition | Structural State | Market Velocity Impact | Tactical Action |
+        | MATRIX COONDITIONS | STRUCTURAL STATE | MARKET VELOCITY IMPACT | TACTICAL ACTION |
         | :--- | :--- | :--- | :--- |
         | **Spot in unhighlighted matrix spaces** | Minimal Dealer Friction | Elevated velocity; chart slices through zones cleanly | Avoid opening directional entries within empty pockets. |
         | **Spot tracking into Red `(R)` Call GEX Wall** | Gamma Deceleration / $IV$ Crush | Upward momentum gridlocks near the strike | Exit long momentum frames; scale into structural credit spreads above. |
@@ -1201,6 +1184,6 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align:center;color:#888;padding:1rem'>
   <b>Professional GEX Terminal — Live Engine Edition</b><br>
-  5 s spot ticks · Configurable chain refresh · Kite Connect <br>
+  5s spot ticks · Configurable chain refresh · Kite Connect <br>
   <span style='font-size:.75rem'>⚠️ Educational only. Not financial advice.</span>
 </div>""", unsafe_allow_html=True)
