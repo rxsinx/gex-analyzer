@@ -683,112 +683,111 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     ])
 
     with tab1:
-      st.subheader("Gamma Exposure Profile")
-    st.plotly_chart(plot_gex_profile(gex_df, spot_price, gamma_levels), use_container_width=True)
+        st.subheader("Gamma Exposure Profile")
+        st.plotly_chart(plot_gex_profile(gex_df, spot_price, gamma_levels), use_container_width=True)
+        
+        # ─── REFACTORED: KEY LEVELS & GEX SUMMARY MATRIX ───
+        st.markdown("##### 📋 Terminal Executive Summary")
+        summary_data = {
+            "Metric / Level": ["ATM Strike", "Support (Max +GEX)", "Resistance (Max -GEX)", "Gamma Flip", "Max Pain"],
+            "Strike Price": [
+                f"₹{get_atm_strike(spot_price, si):,}",
+                f"₹{gamma_levels.get('support', 0):,}" if isinstance(gamma_levels.get('support'), (int, float)) else str(gamma_levels.get('support')),
+                f"₹{gamma_levels.get('resistance', 0):,}" if isinstance(gamma_levels.get('resistance'), (int, float)) else str(gamma_levels.get('resistance')),
+                f"₹{gamma_flip:,.0f}",
+                f"₹{max_pain:,.0f}"
+            ],
+            "GEX Category": ["Call GEX", "Put GEX", "Net GEX", "GEX Above Spot", "GEX Below Spot"],
+            "Value (Cr)": [
+                format_number(gex_df['call_gex'].sum()),
+                format_number(gex_df['put_gex'].sum()),
+                format_number(net_gex),
+                format_number(gamma_levels.get('net_gex_above_spot', 0)),
+                format_number(gamma_levels.get('net_gex_below_spot', 0))
+            ]
+        }
+        st.table(pd.DataFrame(summary_data))
+        
+        st.markdown("---")
     
-    # ─── REFACTORED: KEY LEVELS & GEX SUMMARY MATRIX ───
-    st.markdown("##### 📋 Terminal Executive Summary")
+        # ─── INSERT NEW FEATURE HERE: HORIZONTAL STRIKE MATRIX ───
+        st.subheader("🏁 Strike-by-Strike GEX & Positioning Matrix")
     
-    summary_data = {
-        "Metric / Level": ["ATM Strike", "Support (Max +GEX)", "Resistance (Max -GEX)", "Gamma Flip", "Max Pain"],
-        "Strike Price": [
-            f"₹{get_atm_strike(spot_price, si):,}",
-            f"₹{gamma_levels.get('support', 0):,}" if isinstance(gamma_levels.get('support'), (int, float)) else str(gamma_levels.get('support')),
-            f"₹{gamma_levels.get('resistance', 0):,}" if isinstance(gamma_levels.get('resistance'), (int, float)) else str(gamma_levels.get('resistance')),
-            f"₹{gamma_flip:,.0f}",
-            f"₹{max_pain:,.0f}"
-        ],
-        "GEX Category": ["Call GEX", "Put GEX", "Net GEX", "GEX Above Spot", "GEX Below Spot"],
-        "Value (Cr)": [
-            format_number(gex_df['call_gex'].sum()),
-            format_number(gex_df['put_gex'].sum()),
-            format_number(net_gex),
-            format_number(gamma_levels.get('net_gex_above_spot', 0)),
-            format_number(gamma_levels.get('net_gex_below_spot', 0))
+        # 1. Sort options chain chronological order
+        matrix_df = gex_df.sort_values(by="strike").copy()
+    
+        # 2. Add strike-level PCR safely
+        matrix_df['pcr_strike'] = matrix_df.apply(
+            lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1
+        )
+    
+        # 3. Transpose relevant parameters into rows
+        grid_data = {
+            "Strike Price": matrix_df["strike"].tolist(),
+            "Call GEX": matrix_df["call_gex"].tolist(),
+            "Put GEX": matrix_df["put_gex"].tolist(),
+            "NET GEX": (matrix_df["call_gex"] + matrix_df["put_gex"]).tolist(),
+            "Put OI": matrix_df["put_oi"].tolist(),
+            "Call OI": matrix_df["call_oi"].tolist(),
+            "PCR": matrix_df["pcr_strike"].tolist()
+        }
+    
+        display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
+    
+        # 4. Append Total / Net Calculations Column on Right Margin
+        display_matrix["TOTAL / NET"] = [
+            gex_df['call_gex'].sum(),
+            gex_df['put_gex'].sum(),
+            net_gex,
+            gamma_levels.get('total_put_oi', 0),
+            gamma_levels.get('total_call_oi', 0),
+            gamma_levels.get('pcr', 1.0)
         ]
-    }
-    st.table(pd.DataFrame(summary_data))
-    st.markdown("---")
     
-    # ─── INSERT NEW FEATURE HERE: HORIZONTAL STRIKE MATRIX ───
-    st.subheader("🏁 Strike-by-Strike GEX & Positioning Matrix")
-
-    # 1. Sort options chain chronological order
-    matrix_df = gex_df.sort_values(by="strike").copy()
-
-    # 2. Add strike-level PCR safely
-    matrix_df['pcr_strike'] = matrix_df.apply(
-        lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1
-    )
-
-    # 3. Transpose relevant parameters into rows
-    grid_data = {
-        "Strike Price": matrix_df["strike"].tolist(),
-        "Call GEX": matrix_df["call_gex"].tolist(),
-        "Put GEX": matrix_df["put_gex"].tolist(),
-        "NET GEX": (matrix_df["call_gex"] + matrix_df["put_gex"]).tolist(),
-        "Put OI": matrix_df["put_oi"].tolist(),
-        "Call OI": matrix_df["call_oi"].tolist(),
-        "PCR": matrix_df["pcr_strike"].tolist()
-    }
-
-    display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
-
-    # 4. Append Total / Net Calculations Column on Right Margin
-    display_matrix["TOTAL / NET"] = [
-        gex_df['call_gex'].sum(),
-        gex_df['put_gex'].sum(),
-        net_gex,
-        gamma_levels.get('total_put_oi', 0),
-        gamma_levels.get('total_call_oi', 0),
-        gamma_levels.get('pcr', 1.0)
-    ]
-
-    # 5. Define Custom Highlight Styler Logic
-    atm_strike = get_atm_strike(spot_price, si)
-
-    def style_matrix_cells(df_matrix):
-        styles = pd.DataFrame('', index=df_matrix.index, columns=df_matrix.columns)
-        strikes_only = df_matrix.columns.drop("TOTAL / NET")
-        
-        # Rank top positions for highlighting maps
-        top1_call_gex = df_matrix.loc["Call GEX", strikes_only].abs().nlargest(1).index[0]
-        top2_call_gex = df_matrix.loc["Call GEX", strikes_only].abs().nlargest(2).index[-1]
-        
-        top1_put_gex = df_matrix.loc["Put GEX", strikes_only].abs().nlargest(1).index[0]
-        top2_put_gex = df_matrix.loc["Put GEX", strikes_only].abs().nlargest(2).index[-1]
-        
-        top1_net_gex = df_matrix.loc["NET GEX", strikes_only].abs().nlargest(1).index[0]
-        top2_net_gex = df_matrix.loc["NET GEX", strikes_only].abs().nlargest(2).index[-1]
-        
-        top1_call_oi = df_matrix.loc["Call OI", strikes_only].nlargest(1).index[0]
-        top1_put_oi = df_matrix.loc["Put OI", strikes_only].nlargest(1).index[0]
-
-        # Border marker for ATM Column
-        if atm_strike in df_matrix.columns:
-            styles.loc[:, atm_strike] = 'border: 2px solid #ffaa00;'
-
-        # Color application parameters
-        styles.loc["Call GEX", top1_call_gex] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold;'
-        styles.loc["Call GEX", top2_call_gex] = 'background-color: rgba(239, 68, 68, 0.35); color: white;'
-        styles.loc["Put GEX", top1_put_gex] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
-        styles.loc["Put GEX", top2_put_gex] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
-        styles.loc["NET GEX", top1_net_gex] = 'background-color: rgba(139, 92, 246, 0.6); color: white; font-weight: bold;'
-        styles.loc["NET GEX", top2_net_gex] = 'background-color: rgba(139, 92, 246, 0.35); color: white;'
-        styles.loc["Call OI", top1_call_oi] = 'background-color: rgba(255, 170, 0, 0.5); font-weight: bold;'
-        styles.loc["Put OI", top1_put_oi] = 'background-color: rgba(0, 170, 255, 0.5); font-weight: bold;'
-        
-        styles["TOTAL / NET"] = 'background-color: rgba(148, 163, 184, 0.15); font-weight: bold; border-left: 2px solid gray;'
-        return styles
-
-    # Format output layout safely to string values
-    st.dataframe(
-        display_matrix.style.apply(style_matrix_cells, axis=None),
-        use_container_width=True
-    )
-
-        
-    st.markdown("---")
+        # 5. Define Custom Highlight Styler Logic
+        atm_strike = get_atm_strike(spot_price, si)
+    
+        def style_matrix_cells(df_matrix):
+            styles = pd.DataFrame('', index=df_matrix.index, columns=df_matrix.columns)
+            strikes_only = df_matrix.columns.drop("TOTAL / NET")
+            
+            # Rank top positions for highlighting maps
+            top1_call_gex = df_matrix.loc["Call GEX", strikes_only].abs().nlargest(1).index[0]
+            top2_call_gex = df_matrix.loc["Call GEX", strikes_only].abs().nlargest(2).index[-1]
+            
+            top1_put_gex = df_matrix.loc["Put GEX", strikes_only].abs().nlargest(1).index[0]
+            top2_put_gex = df_matrix.loc["Put GEX", strikes_only].abs().nlargest(2).index[-1]
+            
+            top1_net_gex = df_matrix.loc["NET GEX", strikes_only].abs().nlargest(1).index[0]
+            top2_net_gex = df_matrix.loc["NET GEX", strikes_only].abs().nlargest(2).index[-1]
+            
+            top1_call_oi = df_matrix.loc["Call OI", strikes_only].nlargest(1).index[0]
+            top1_put_oi = df_matrix.loc["Put OI", strikes_only].nlargest(1).index[0]
+    
+            # Border marker for ATM Column
+            if atm_strike in df_matrix.columns:
+                styles.loc[:, atm_strike] = 'border: 2px solid #ffaa00;'
+    
+            # Color application parameters
+            styles.loc["Call GEX", top1_call_gex] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold;'
+            styles.loc["Call GEX", top2_call_gex] = 'background-color: rgba(239, 68, 68, 0.35); color: white;'
+            styles.loc["Put GEX", top1_put_gex] = 'background-color: rgba(34, 197, 94, 0.6); color: white; font-weight: bold;'
+            styles.loc["Put GEX", top2_put_gex] = 'background-color: rgba(34, 197, 94, 0.35); color: white;'
+            styles.loc["NET GEX", top1_net_gex] = 'background-color: rgba(139, 92, 246, 0.6); color: white; font-weight: bold;'
+            styles.loc["NET GEX", top2_net_gex] = 'background-color: rgba(139, 92, 246, 0.35); color: white;'
+            styles.loc["Call OI", top1_call_oi] = 'background-color: rgba(255, 170, 0, 0.5); font-weight: bold;'
+            styles.loc["Put OI", top1_put_oi] = 'background-color: rgba(0, 170, 255, 0.5); font-weight: bold;'
+            
+            styles["TOTAL / NET"] = 'background-color: rgba(148, 163, 184, 0.15); font-weight: bold; border-left: 2px solid gray;'
+            return styles
+    
+        # Format output layout safely to string values
+        st.dataframe(
+            display_matrix.style.apply(style_matrix_cells, axis=None),
+            use_container_width=True
+        )
+    
+        st.markdown("---")
         st.subheader("Cumulative GEX Profile — Dealer Hedging Pressure")
         st.plotly_chart(
             plot_spot_gex_levels(gex_df, spot_price, gamma_levels, 500),
