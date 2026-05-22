@@ -700,6 +700,8 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "Put OI (L)": (matrix_df["put_oi"] / 1e5).tolist(),
             "Call OI (L)": (matrix_df["call_oi"] / 1e5).tolist(),
             "PCR": matrix_df["pcr_strike"].tolist()
+            "Call Premium": matrix_df["call_ltp"].tolist(),  # <── ADDED: Adjust column name if your df uses 'call_price'
+            "Put Premium": matrix_df["put_ltp"].tolist()
         }
     
         display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
@@ -711,7 +713,9 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             net_gex / 1e7,
             gamma_levels.get('total_put_oi', 0) / 1e5,
             gamma_levels.get('total_call_oi', 0) / 1e5,
-            gamma_levels.get('pcr', 1.0)
+            np.nan,  # PCR Total
+            np.nan,  # <── ADDED: Blanks out Call Premium Total
+            np.nan   # <── ADDED: Blanks out Put Premium Total
         ]
     
         # Find precise ATM strike nearest to spot
@@ -794,6 +798,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                     font-weight: 800 !important;
                     color: #000000 !important;
                     font-size: 0.72rem !important;
+                    background-color: rgba(241, 245, 249, 0.7) !important;
                 }
                 /* Row Headers (Metrics Label Column) Styling */
                 [data-testid="stDataFrame"] div[role="rowheader"] p, [data-testid="stDataFrame"] div[role="rowheader"] {
