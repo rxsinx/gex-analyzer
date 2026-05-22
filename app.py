@@ -791,10 +791,10 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         if top1_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top1_net_pos] += " (S)"
         if top2_net_pos: display_matrix_fmt.loc["NET GEX (Cr)", top2_net_pos] += " (S)"
     
-        display_matrix_fmt.loc["Put OI (L)", top1_put_oi] += " (R)"
-        display_matrix_fmt.loc["Put OI (L)", top2_put_oi] += " (R)"
-        display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (S)"
-        display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (S)"
+        display_matrix_fmt.loc["Put OI (L)", top1_put_oi] += " (S)"
+        display_matrix_fmt.loc["Put OI (L)", top2_put_oi] += " (S)"
+        display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (R)"
+        display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (R)"
     
         # 5. Define Highlight Styler CSS Engine
         def style_matrix_cells(df_matrix):
