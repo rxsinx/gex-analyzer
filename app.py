@@ -903,9 +903,9 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                         showscale=False,
                         line=dict(width=1, color='#ef4444')
                     ),
-                    text=[f"+{int(v):,}" for v in top_call_oi['oi_change']],
+                    text=[f"{v/1e5:.2f}" for v in top_call_oi['oi_change']],
                     textposition='outside',
-                    hovertemplate='<b>Call Strike ₹%{label}</b><br>OI Change: +%{x:,.0f}<extra></extra>'
+                    hovertemplate='<b>Call Strike ₹%{label}</b><br>OI Change: %{text}<extra></extra>'
                 ))
             
             # Put OI changes (green)
@@ -921,9 +921,9 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                         showscale=False,
                         line=dict(width=1, color='#22c55e')
                     ),
-                    text=[f"+{int(v):,}" for v in top_put_oi['oi_change']],
+                    text=[f"{v/1e5:.2f}" for v in top_put_oi['oi_change']],
                     textposition='outside',
-                    hovertemplate='<b>Put Strike ₹%{label}</b><br>OI Change: +%{x:,.0f}<extra></extra>'
+                    hovertemplate='<b>Put Strike ₹%{label}</b><br>OI Change: %{text}<extra></extra>'
                 ))
             
             fig_oi.update_layout(
