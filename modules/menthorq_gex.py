@@ -109,11 +109,24 @@ def plot_menthorq_gex(
     bar_cols  = [_bar_colour(v, gex_max) for v in gex_sc]
 
     # ── key levels ─────────────────────────────────────────────────────────────
-    call_wall  = float(gamma_levels.get("max_call_oi_strike", spot_price * 1.02))
-    put_wall   = float(gamma_levels.get("max_put_oi_strike",  spot_price * 0.98))
-    hvl        = float(gamma_levels.get("gamma_flip",         spot_price * 0.99))
-    net_regime = gamma_levels.get("total_gex", 0)
+    # GAMMA-BASED LEVELS (Dealer hedging zones)
+    # Call Resistance: Strike with MOST NEGATIVE call_gex
+    call_wall_gamma_idx = df['call_gex'].idxmin()
+    call_wall_gamma = float(df.loc[call_wall_gamma_idx, 'strike']) if call_wall_gamma_idx is not None else spot_price * 1.02
+    
+    # Put Support: Strike with MOST POSITIVE put_gex
+    put_wall_gamma_idx = df['put_gex'].idxmax()
+    put_wall_gamma = float(df.loc[put_wall_gamma_idx, 'strike']) if put_wall_gamma_idx is not None else spot_price * 0.98
+    
+    # OI-BASED LEVELS (Volume concentration)
+    call_wall_oi = float(gamma_levels.get("max_call_oi_strike", spot_price * 1.02))
+    put_wall_oi = float(gamma_levels.get("max_put_oi_strike", spot_price * 0.98))
+    
+    # Gamma Flip Point (unchanged)
+    hvl = float(gamma_levels.get("gamma_flip", spot_price * 0.99))
 
+    net_regime = gamma_levels.get("total_gex", 0)
+    
     fig = go.Figure()
 
     # ── 1. Horizontal bars ────────────────────────────────────────────────────
@@ -135,7 +148,6 @@ def plot_menthorq_gex(
     ))
 
     # ── 3. Cumulative GEX line (orange) ───────────────────────────────────────
-    # Replaces the normalised-DEX approach that had no physical meaning.
     fig.add_trace(go.Scatter(
         y=strikes, x=cum_gex,
         mode="lines",
@@ -144,49 +156,82 @@ def plot_menthorq_gex(
         hovertemplate=f"<b>Strike</b> ₹%{{y:,.0f}}<br><b>Cumul. GEX</b> %{{x:.3f}} {unit}<extra></extra>",
     ))
 
-    # annotate the regime-flip crossing on the cumulative line
-    flip_idx = int(np.argmin(np.abs(cum_gex)))
-    fig.add_annotation(
-        x=float(cum_gex[flip_idx]), y=float(strikes[flip_idx]),
-        text="  ← regime flip",
-        showarrow=False,
-        font=dict(color=_C_CUM, size=9, family="monospace"),
-        xanchor="left",
+    # ── 4. GAMMA-BASED H-LINES (Solid Lines - Dealer Hedging) ─────────────────
+    # Call Resistance (Gamma) - Solid Red
+    fig.add_hline(
+        y=call_wall_gamma,
+        line=dict(color="#ef4444", width=2.2, dash="solid"),
+        annotation_text=f"  Call Resistance (Γ): {call_wall_gamma:,.0f}  ",
+        annotation_position="top right",
+        annotation_font=dict(color="#ef4444", size=10, family="monospace"),
     )
 
-    # ── 4. Key level h-lines ──────────────────────────────────────────────────
-    for price, color, dash, label, pos in [
-        (call_wall,  _C_CALL, "dash", f"Call Resistance: {call_wall:,.0f}", "top right"),
-        (put_wall,   _C_PUT,  "dash", f"Put Support: {put_wall:,.0f}",      "top right"),
-        (hvl,        _C_HVL,  "dash", f"HVL: {hvl:,.0f}",                   "top left"),
-        (spot_price, _C_SPOT, "dot",  f"Spot: {spot_price:,.0f}",            "top left"),
-    ]:
-        fig.add_hline(
-            y=price,
-            line=dict(color=color, width=1.3, dash=dash),
-            annotation_text=f"  {label}  ",
-            annotation_position=pos,
-            annotation_font=dict(color=color, size=9, family="monospace"),
-        )
-
-    # ── 5. Level dot markers (left margin) ───────────────────────────────────
+    # Put Support (Gamma) - Solid Green
+    fig.add_hline(
+        y=put_wall_gamma,
+        line=dict(color="#22c55e", width=2.2, dash="solid"),
+        annotation_text=f"  Put Support (Γ): {put_wall_gamma:,.0f}  ",
+        annotation_position="top right",
+        annotation_font=dict(color="#22c55e", size=10, family="monospace"),
+    )
+ 
+    # ── 5. OI-BASED H-LINES (Dashed Lines - Volume Zones) ────────────────────
+    # Call Wall (OI) - Dashed Red
+    fig.add_hline(
+        y=call_wall_oi,
+        line=dict(color="#ef4444", width=1.8, dash="dash"),
+        annotation_text=f"  Call Wall (OI): {call_wall_oi:,.0f}  ",
+        annotation_position="bottom right",
+        annotation_font=dict(color="#fca5a5", size=9, family="monospace"),
+    )
+    
+    # Put Wall (OI) - Dashed Green
+    fig.add_hline(
+        y=put_wall_oi,
+        line=dict(color="#22c55e", width=1.8, dash="dash"),
+        annotation_text=f"  Put Wall (OI): {put_wall_oi:,.0f}  ",
+        annotation_position="bottom right",
+        annotation_font=dict(color="#86efac", size=9, family="monospace"),
+    )
+ 
+    # ── 6. GAMMA FLIP LEVEL (HVL) ────────────────────────────────────────────
+    fig.add_hline(
+        y=hvl,
+        line=dict(color=_C_HVL, width=1.3, dash="dash"),
+        annotation_text=f"  HVL: {hvl:,.0f}  ",
+        annotation_position="top left",
+        annotation_font=dict(color=_C_HVL, size=9, family="monospace"),
+    )
+ 
+    # ── 7. SPOT PRICE ────────────────────────────────────────────────────────
+    fig.add_hline(
+        y=spot_price,
+        line=dict(color=_C_SPOT, width=1.5, dash="dot"),
+        annotation_text=f"  Spot: {spot_price:,.0f}  ",
+        annotation_position="top left",
+        annotation_font=dict(color=_C_SPOT, size=10, family="monospace"),
+    )
+ 
+    # ── 8. Level dot markers (left margin) ───────────────────────────────────
     dot_x = -gex_max * 1.25
     for price, color, name in [
-        (call_wall,  _C_CALL, "Call Resistance"),
+        (call_wall_gamma, _C_CALL, "Call Resistance (Γ)"),
+        (call_wall_oi, "#fca5a5", "Call Wall (OI)"),
         (spot_price, _C_SPOT, "Spot Price"),
-        (hvl,        _C_HVL,  "HVL"),
-        (put_wall,   _C_PUT,  "Put Support"),
+        (hvl, _C_HVL, "HVL"),
+        (put_wall_gamma, _C_PUT, "Put Support (Γ)"),
+        (put_wall_oi, "#86efac", "Put Wall (OI)"),
     ]:
         fig.add_trace(go.Scatter(
             x=[dot_x], y=[price],
             mode="markers",
-            marker=dict(size=13, color=color, symbol="circle",
+            marker=dict(size=11, color=color, symbol="circle",
                         line=dict(width=1.5, color="rgba(0,0,0,0.5)")),
             name=name, showlegend=False,
             hovertemplate=f"<b>{name}</b>  ₹{price:,.0f}<extra></extra>",
         ))
-
-    # ── 6. Gamma pin circle (white) ───────────────────────────────────────────
+ 
+    # ── 9. Gamma pin circle (white) ───────────────────────────────────────────
     near_mask = (
         (df["strike"] >= spot_price * 0.965) &
         (df["strike"] <= spot_price * 1.035) &
@@ -202,8 +247,8 @@ def plot_menthorq_gex(
             x1=cx + pin_sc*0.68, y1=cy + si*2.8,
             line=dict(color=_C_PIN, width=2.8),
             fillcolor="rgba(255,255,255,0.03)")
-
-    # ── 7. Negative gamma pocket circle (red filled) ──────────────────────────
+ 
+    # ── 10. Negative gamma pocket circle (red filled) ───────────────────────
     neg_mask = df["total_gex"] < 0
     if neg_mask.any():
         neg_sub   = df[neg_mask]
@@ -217,40 +262,47 @@ def plot_menthorq_gex(
             x1=cx + abs(worst_sc)*0.70, y1=cy + max(v_span*0.62, si*2.2),
             line=dict(color=_C_NEG, width=2.8),
             fillcolor="rgba(239,68,68,0.10)")
-
-    # ── 8. Legend annotation (top-right) ──────────────────────────────────────
+ 
+    # ── 11. Enhanced Legend annotation ───────────────────────────────────────
     fig.add_annotation(
         xref="paper", yref="paper",
         x=1.01, y=1.00,
         xanchor="left", yanchor="top",
         showarrow=False, align="left",
-        bgcolor="rgba(8,8,8,0.90)",
-        bordercolor="rgba(120,120,120,0.40)",
+        bgcolor="rgba(8,8,8,0.92)",
+        bordercolor="rgba(120,120,120,0.50)",
         borderwidth=1,
-        font=dict(size=9.5, family="monospace", color="#E2E8F0"),
-        width=275,
-        text="<br>".join([
-            "<b>Area / Feature</b>                  <b>Label / Insight</b>",
-            "────────────────────────────────────",
-            f"<span style='color:{_C_CALL}'>●</span>  Call Resistance          Major Dealer Resistance",
-            "<span style='color:#22C55E'>●</span>  +GEX Cluster             Gamma Pin / Support",
-            f"<span style='color:{_C_HVL}'>●</span>  HVL Regime Level         Volatility Trigger",
-            "<span style='color:#F97316'>●</span>  –GEX Pocket              Acceleration Zone",
-            f"<span style='color:{_C_SPOT}'>●</span>  Spot Price               Current Level",
-            "────────────────────────────────────",
-            f"<span style='color:{_C_GEX}'>━━</span> GEX Profile              Per-strike bar envelope",
-            f"<span style='color:{_C_CUM}'>━━</span> Cumul. GEX               Running sum → zero = HVL",
+        font=dict(size=8.5, family="monospace", color="#E2E8F0"),
+        width=310,
+        text="<b>LEGEND: Dealer Positioning</b><br>".join([
+            "═══════════════════════════════",
+            "",
+            "<span style='color:#ef4444'>━━ Solid</span>  Call Resistance (Γ)",
+            "<span style='color:#fca5a5'>─ ─ Dashed</span> Call Wall (OI Volume)",
+            "",
+            "<span style='color:#22c55e'>━━ Solid</span>  Put Support (Γ)",
+            "<span style='color:#86efac'>─ ─ Dashed</span> Put Wall (OI Volume)",
+            "",
+            "<span style='color:#EAB308'>━━ Dashed</span> HVL (Regime Flip)",
+            "<span style='color:#CBD5E1'>·· Dotted</span> Spot Price",
+            "",
+            "<span style='color:#FFD700'>━━</span> GEX Profile Line",
+            "<span style='color:#FF8C00'>━━</span> Cumul. GEX (Zero = HVL)",
+            "",
+            "Γ = Gamma-based (Dealer hedging)",
+            "OI = OI-based (Volume concentration)",
+            "═══════════════════════════════",
         ]),
     )
-
-    # ── 9. Layout ─────────────────────────────────────────────────────────────
+ 
+    # ── 12. Layout ─────────────────────────────────────────────────────────────
     regime_lbl = (
         "Positive GEX ▲  Dealers stabilising"
         if net_regime > 0 else
         "Negative GEX ▼  Dealers amplifying"
     )
     x_right = max(gex_max, cum_max) * 1.80
-
+ 
     fig.update_layout(
         title=dict(
             text=(
@@ -268,7 +320,7 @@ def plot_menthorq_gex(
         height=740,
         hovermode="y unified",
         bargap=0.10,
-        margin=dict(l=70, r=295, t=90, b=80),
+        margin=dict(l=70, r=330, t=90, b=80),
         xaxis=dict(
             title=dict(text=f"GEX ({unit})" if unit else "GEX",
                        font=dict(size=11, color="#94A3B8")),
@@ -293,7 +345,7 @@ def plot_menthorq_gex(
             orientation="h",
         ),
     )
-
+ 
     return fig
 
 
