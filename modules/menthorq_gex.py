@@ -157,31 +157,44 @@ def plot_menthorq_gex(
         hovertemplate=f"<b>Strike</b> ₹%{{y:,.0f}}<br><b>Cumul. GEX</b> %{{x:.3f}} {unit}<extra></extra>",
     ))
  
-    # ── 4. GAMMA-BASED H-LINES (Solid Lines - Dealer Hedging) ─────────────────
+    # ── 4. GAMMA-BASED H-LINES (Solid Lines - Dealer Hedging Zones) ──────────
+ 
+    # Calculate gamma intensity for better labels
+    call_gamma_intensity = abs(df.loc[call_wall_gamma_idx, 'call_gex']) if call_wall_gamma_idx is not None else 0
+    put_gamma_intensity = abs(df.loc[put_wall_gamma_idx, 'put_gex']) if put_wall_gamma_idx is not None else 0
+    
     # Call Resistance (Gamma) - Solid Red
     fig.add_hline(
         y=call_wall_gamma,
         line=dict(color="#ef4444", width=2.2, dash="solid"),
-        annotation_text=f"  Call Resistance (Γ): {call_wall_gamma:,.0f}  ",
+        annotation_text=f"  ₹{call_wall_gamma:,.0f} - Call Gamma Peak  ",
         annotation_position="top right",
-        annotation_font=dict(color="#ef4444", size=10, family="monospace"),
+        annotation_font=dict(color="#ef4444", size=10, family="monospace", weight="bold"),
     )
     
     # Put Support (Gamma) - Solid Green
     fig.add_hline(
         y=put_wall_gamma,
         line=dict(color="#22c55e", width=2.2, dash="solid"),
-        annotation_text=f"  Put Support (Γ): {put_wall_gamma:,.0f}  ",
-        annotation_position="top right",
-        annotation_font=dict(color="#22c55e", size=10, family="monospace"),
+        annotation_text=f"  ₹{put_wall_gamma:,.0f} - Put Gamma Floor  ",
+        annotation_position="bottom right",
+        annotation_font=dict(color="#22c55e", size=10, family="monospace", weight="bold"),
     )
  
-    # ── 5. OI-BASED H-LINES (Dashed Lines - Volume Zones) ────────────────────
+    # ── 5. OI-BASED H-LINES (Dashed Lines - Position Concentration) ──────────
+ 
+    # Get OI values for context
+    call_oi_value = gex_df[gex_df['strike'] == call_wall_oi]['call_oi'].values
+    put_oi_value = gex_df[gex_df['strike'] == put_wall_oi]['put_oi'].values
+    
+    call_oi_str = f"{call_oi_value[0]/1e5:.1f}L" if len(call_oi_value) > 0 else "—"
+    put_oi_str = f"{put_oi_value[0]/1e5:.1f}L" if len(put_oi_value) > 0 else "—"
+    
     # Call Wall (OI) - Dashed Red
     fig.add_hline(
         y=call_wall_oi,
         line=dict(color="#ef4444", width=1.8, dash="dash"),
-        annotation_text=f"  Call Wall (OI): {call_wall_oi:,.0f}  ",
+        annotation_text=f"  ₹{call_wall_oi:,.0f} - Call OI Cluster ({call_oi_str})  ",
         annotation_position="bottom right",
         annotation_font=dict(color="#fca5a5", size=9, family="monospace"),
     )
@@ -190,16 +203,16 @@ def plot_menthorq_gex(
     fig.add_hline(
         y=put_wall_oi,
         line=dict(color="#22c55e", width=1.8, dash="dash"),
-        annotation_text=f"  Put Wall (OI): {put_wall_oi:,.0f}  ",
+        annotation_text=f"  ₹{put_wall_oi:,.0f} - Put OI Cluster ({put_oi_str})  ",
         annotation_position="bottom right",
         annotation_font=dict(color="#86efac", size=9, family="monospace"),
     )
  
-    # ── 6. GAMMA FLIP LEVEL (HVL) ────────────────────────────────────────────
+    # ── 6. GAMMA FLIP LEVEL (HVL) ───────────────────────────────────────────
     fig.add_hline(
         y=hvl,
         line=dict(color=_C_HVL, width=1.3, dash="dash"),
-        annotation_text=f"  HVL: {hvl:,.0f}  ",
+        annotation_text=f"  ₹{hvl:,.0f} - Regime Flip Point  ",
         annotation_position="top left",
         annotation_font=dict(color=_C_HVL, size=9, family="monospace"),
     )
@@ -208,9 +221,9 @@ def plot_menthorq_gex(
     fig.add_hline(
         y=spot_price,
         line=dict(color=_C_SPOT, width=1.5, dash="dot"),
-        annotation_text=f"  Spot: {spot_price:,.0f}  ",
+        annotation_text=f"  Spot ₹{spot_price:,.0f}  ",
         annotation_position="top left",
-        annotation_font=dict(color=_C_SPOT, size=10, family="monospace"),
+        annotation_font=dict(color=_C_SPOT, size=10, family="monospace", weight="bold"),
     )
  
     # ── 8. Level dot markers (left margin) ───────────────────────────────────
@@ -273,7 +286,7 @@ def plot_menthorq_gex(
         bgcolor="rgba(8,8,8,0.94)",
         bordercolor="rgba(120,120,120,0.50)",
         borderwidth=1.5,
-        font=dict(size=8.2, family="monospace", color="#E2E8F0"),
+        font=dict(size=10, family="monospace", color="#E2E8F0"),
         width=340,
         text=(
             "<b>KEY LEVELS & MEANINGS</b><br>"
@@ -411,19 +424,19 @@ def generate_gex_analysis(
     # L1: Regime explanation
     if net_gex > 0:
         lines.append(
-            f"⚡ **Positive Gamma Regime** — Dealers are net long gamma across the board. "
+            f"⚡ Positive Gamma Regime — Dealers are net long gamma across the board. "
             f"This means when spot moves down slightly, dealers must BUY (support), "
-            f"and when spot moves up, dealers SELL (resistance). Price action is **stabilized**."
+            f"and when spot moves up, dealers SELL (resistance). Price action is stabilized."
         )
     else:
         lines.append(
-            f"⚡ **Negative Gamma Regime** — Dealers are net short gamma, forced to hedge in the direction of moves. "
-            f"Down moves trigger MORE selling, up moves trigger MORE buying. Price action is **amplified** (trending)."
+            f"⚡ Negative Gamma Regime — Dealers are net short gamma, forced to hedge in the direction of moves. "
+            f"Down moves trigger MORE selling, up moves trigger MORE buying. Price action is amplified (trending)."
         )
  
     # L2: Call Resistance explanation
     lines.append(
-        f"📊 **Call Resistance @ ₹{call_wall_gamma:,.0f} (Gamma)** — This is where the STRONGEST call gamma concentration exists. "
+        f"📊 Call Resistance @ ₹{call_wall_gamma:,.0f} (Gamma) — This is where the STRONGEST call gamma concentration exists. "
         f"Dealers holding short calls must hedge by selling into rallies near this strike. "
         f"Spot is {abs(call_dist):.1f}% {'below' if call_dist > 0 else 'above'} this level. "
         f"Separately, call volume is concentrated @ ₹{call_wall_oi:,.0f} (OI-based)."
@@ -431,7 +444,7 @@ def generate_gex_analysis(
  
     # L3: Put Support explanation
     lines.append(
-        f"🛡️ **Put Support @ ₹{put_wall_gamma:,.0f} (Gamma)** — This is where the STRONGEST put gamma floor exists. "
+        f"🛡️ Put Support @ ₹{put_wall_gamma:,.0f} (Gamma) — This is where the STRONGEST put gamma floor exists. "
         f"Dealers holding long puts have gamma that ACCELERATES buying into dips. "
         f"Spot is {abs(put_dist):.1f}% above this level. "
         f"Separately, put volume is concentrated @ ₹{put_wall_oi:,.0f} (OI-based)."
@@ -440,14 +453,14 @@ def generate_gex_analysis(
     # L4: HVL and asymmetry
     if above_hvl:
         lines.append(
-            f"⚠️ **Gamma Flip Risk** — Spot is {hvl_dist:.1f}% above HVL (₹{hvl:,.0f}). "
+            f"⚠️ Gamma Flip Risk — Spot is {hvl_dist:.1f}% above HVL (₹{hvl:,.0f}). "
             f"If spot breaks BELOW HVL, cumulative GEX flips negative, exposing a dealer short-gamma pocket. "
             f"This accelerates selling pressure down toward the put wall ₹{put_wall_gamma:,.0f}. "
             f"The asymmetry: slow up, fast down (if flip occurs)."
         )
     else:
         lines.append(
-            f"✅ **Stable Below HVL** — Spot is {hvl_dist:.1f}% below HVL (₹{hvl:,.0f}). "
+            f"✅ Stable Below HVL — Spot is {hvl_dist:.1f}% below HVL (₹{hvl:,.0f}). "
             f"Cumulative GEX is negative here, but as long as spot stays above the put floor ₹{put_wall_gamma:,.0f}, "
             f"the market is contained. Reclaiming HVL would reset cumulative GEX positive (more stable)."
         )
