@@ -109,6 +109,7 @@ def plot_menthorq_gex(
     bar_cols  = [_bar_colour(v, gex_max) for v in gex_sc]
 
     # ── key levels ─────────────────────────────────────────────────────────────
+    
     # GAMMA-BASED LEVELS (Dealer hedging zones)
     # Call Resistance: Strike with MOST NEGATIVE call_gex
     call_wall_gamma_idx = df['call_gex'].idxmin()
@@ -124,11 +125,11 @@ def plot_menthorq_gex(
     
     # Gamma Flip Point (unchanged)
     hvl = float(gamma_levels.get("gamma_flip", spot_price * 0.99))
-
-    net_regime = gamma_levels.get("total_gex", 0)
     
+    net_regime = gamma_levels.get("total_gex", 0)
+ 
     fig = go.Figure()
-
+ 
     # ── 1. Horizontal bars ────────────────────────────────────────────────────
     fig.add_trace(go.Bar(
         y=strikes, x=gex_sc,
@@ -137,7 +138,7 @@ def plot_menthorq_gex(
         name="Net GEX",
         hovertemplate=f"<b>Strike</b> ₹%{{y:,.0f}}<br><b>Net GEX</b> %{{x:.3f}} {unit}<extra></extra>",
     ))
-
+ 
     # ── 2. GEX Profile line (yellow) ──────────────────────────────────────────
     fig.add_trace(go.Scatter(
         y=strikes, x=gex_sc,
@@ -146,7 +147,7 @@ def plot_menthorq_gex(
         name="GEX Profile",
         hoverinfo="skip",
     ))
-
+ 
     # ── 3. Cumulative GEX line (orange) ───────────────────────────────────────
     fig.add_trace(go.Scatter(
         y=strikes, x=cum_gex,
@@ -155,7 +156,7 @@ def plot_menthorq_gex(
         name="Cumul. GEX",
         hovertemplate=f"<b>Strike</b> ₹%{{y:,.0f}}<br><b>Cumul. GEX</b> %{{x:.3f}} {unit}<extra></extra>",
     ))
-
+ 
     # ── 4. GAMMA-BASED H-LINES (Solid Lines - Dealer Hedging) ─────────────────
     # Call Resistance (Gamma) - Solid Red
     fig.add_hline(
@@ -165,7 +166,7 @@ def plot_menthorq_gex(
         annotation_position="top right",
         annotation_font=dict(color="#ef4444", size=10, family="monospace"),
     )
-
+    
     # Put Support (Gamma) - Solid Green
     fig.add_hline(
         y=put_wall_gamma,
