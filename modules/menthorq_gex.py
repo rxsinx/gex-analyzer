@@ -275,7 +275,7 @@ def plot_menthorq_gex(
         borderwidth=1,
         font=dict(size=8.5, family="monospace", color="#E2E8F0"),
         width=310,
-        text="<b>LEGEND: Dealer Positioning</b><br>".join([
+        text="<b>: Dealer Positioning</b><br>".join([
             "═══════════════════════════════",
             "",
             "<span style='color:#ef4444'>━━ Solid</span>  Call Resistance (Γ)",
