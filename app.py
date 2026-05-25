@@ -869,66 +869,85 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         st.plotly_chart(plot_iv_smile(gex_df), use_container_width=True)
         
         st.markdown("---")
-
         st.subheader("📊 OI Change Heatmap — Top 4 Movers")
-        import plotly.graph_objects as go
-
-        # Get top 2 Call OI gainers and top 2 Put OI gainers
         
-        top_call_oi_changes = gex_df.nlargest(2, 'oi_change')[['strike', 'oi_change', 'call_oi']]
-        top_put_oi_changes = gex_df.nlargest(2, 'oi_change')[['strike', 'oi_change', 'put_oi']]
+        # Get OI change data from original options_df
+        try:
+            import plotly.graph_objects as go
+            
+            options_df = st.session_state.options_df
+            
+            # Separate calls and puts and get OI changes
+            calls_oi_change = options_df[options_df['type'] == 'CE'].groupby('strike').agg({
+                'oi_change': 'sum',
+                'strike': 'first'
+            }).reset_index(drop=True).drop_duplicates(subset=['strike'])
+            
+            puts_oi_change = options_df[options_df['type'] == 'PE'].groupby('strike').agg({
+                'oi_change': 'sum',
+                'strike': 'first'
+            }).reset_index(drop=True).drop_duplicates(subset=['strike'])
+            
+            # Get top 2 gainers
+            top_call_oi = calls_oi_change.nlargest(2, 'oi_change')
+            top_put_oi = puts_oi_change.nlargest(2, 'oi_change')
+            
+            fig_oi = go.Figure()
+            
+            # Call OI changes (red)
+            if not top_call_oi.empty:
+                fig_oi.add_trace(go.Bar(
+                    y=[f"Call ₹{int(s)}" for s in top_call_oi['strike']],
+                    x=top_call_oi['oi_change'],
+                    orientation='h',
+                    name='Call OI Change',
+                    marker=dict(
+                        color=top_call_oi['oi_change'].values,
+                        colorscale='Reds',
+                        showscale=False,
+                        line=dict(width=2, color='#ef4444')
+                    ),
+                    text=[f"+{int(v):,}" for v in top_call_oi['oi_change']],
+                    textposition='outside',
+                    hovertemplate='<b>Call Strike ₹%{label}</b><br>OI Change: +%{x:,.0f}<extra></extra>'
+                ))
+            
+            # Put OI changes (green)
+            if not top_put_oi.empty:
+                fig_oi.add_trace(go.Bar(
+                    y=[f"Put ₹{int(s)}" for s in top_put_oi['strike']],
+                    x=top_put_oi['oi_change'],
+                    orientation='h',
+                    name='Put OI Change',
+                    marker=dict(
+                        color=top_put_oi['oi_change'].values,
+                        colorscale='Greens',
+                        showscale=False,
+                        line=dict(width=2, color='#22c55e')
+                    ),
+                    text=[f"+{int(v):,}" for v in top_put_oi['oi_change']],
+                    textposition='outside',
+                    hovertemplate='<b>Put Strike ₹%{label}</b><br>OI Change: +%{x:,.0f}<extra></extra>'
+                ))
+            
+            fig_oi.update_layout(
+                title="🔴 Top 2 Call + 🟢 Top 2 Put OI Gainers (Current Session)",
+                barmode='group',
+                template='plotly_dark',
+                height=320,
+                xaxis_title='OI Change (Contracts)',
+                yaxis_title='Strike Level',
+                showlegend=True,
+                hovermode='y unified',
+                margin=dict(l=120, r=120, t=60, b=40)
+            )
+            
+            st.plotly_chart(fig_oi, use_container_width=True)
+            
+        except Exception as e:
+            st.warning(f"⚠️ Could not load OI change data: {str(e)}")
         
-        # Create side-by-side bar chart
-        fig_oi = go.Figure()
-        
-        # Call OI changes (red)
-        fig_oi.add_trace(go.Bar(
-            y=[f"Call ₹{int(s)}" for s in top_call_oi_changes['strike']],
-            x=top_call_oi_changes['oi_change'],
-            orientation='h',
-            name='Call OI Change',
-            marker=dict(
-                color=top_call_oi_changes['oi_change'],
-                colorscale='Reds',
-                showscale=False,
-                line=dict(width=2, color='#ef4444')
-            ),
-            text=[f"+{int(v):,}" for v in top_call_oi_changes['oi_change']],
-            textposition='outside',
-            hovertemplate='<b>Strike ₹%{label}</b><br>OI Change: %{x:+,.0f}<extra></extra>'
-        ))
-        
-        # Put OI changes (green)
-        fig_oi.add_trace(go.Bar(
-            y=[f"Put ₹{int(s)}" for s in top_put_oi_changes['strike']],
-            x=top_put_oi_changes['oi_change'],
-            orientation='h',
-            name='Put OI Change',
-            marker=dict(
-                color=top_put_oi_changes['oi_change'],
-                colorscale='Greens',
-                showscale=False,
-                line=dict(width=2, color='#22c55e')
-            ),
-            text=[f"+{int(v):,}" for v in top_put_oi_changes['oi_change']],
-            textposition='outside',
-            hovertemplate='<b>Strike ₹%{label}</b><br>OI Change: %{x:+,.0f}<extra></extra>'
-        ))
-        
-        fig_oi.update_layout(
-            title="🔴 Top 2 Call + 🟢 Top 2 Put OI Gainers",
-            barmode='group',
-            template='plotly_dark',
-            height=320,
-            xaxis_title='OI Change (Contracts)',
-            yaxis_title='Strike Level',
-            showlegend=True,
-            hovermode='y unified',
-            margin=dict(l=100, r=100, t=50, b=40)
-        )
-        
-        st.plotly_chart(fig_oi, use_container_width=True)
-        
+        st.markdown("---")
         v1,v2,v3 = st.columns(3)
         cv = gamma_levels.get("total_call_volume",0)
         pv = gamma_levels.get("total_put_volume",0)
