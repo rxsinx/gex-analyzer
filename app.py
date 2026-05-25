@@ -931,7 +931,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                 barmode='group',
                 template='plotly_dark',
                 height=320,
-                xaxis_title='OI Change (Contracts)',
+                xaxis_title='OI Change in Lacs (Contracts)',
                 yaxis_title='Strike Level',
                 showlegend=True,
                 hovermode='y unified',
