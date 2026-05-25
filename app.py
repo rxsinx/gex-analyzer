@@ -704,8 +704,8 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "Put OI (L)": (matrix_df["put_oi"] / 1e5).tolist(),
             "Call OI (L)": (matrix_df["call_oi"] / 1e5).tolist(),
             "PCR": matrix_df["pcr_strike"].tolist(),
-            "Call Theo": matrix_df["call_theo"].tolist(),      # CHANGED: theo instead of ltp
-            "Put Theo": matrix_df["put_theo"].tolist()         # CHANGED: theo instead of ltp
+            "Call Prem": matrix_df["call_theo"].tolist(),      # CHANGED: theo instead of ltp
+            "Put Prem": matrix_df["put_theo"].tolist()         # CHANGED: theo instead of ltp
         }
     
         display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
