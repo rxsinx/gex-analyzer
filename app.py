@@ -1090,31 +1090,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
  
             st.markdown("---")
  
-            # ── Gamma Overlap chart ────────────────────────────────────────────
-            st.markdown("##### Gamma Exposure Overlap (Call vs Put)")
-            fig_ov = _go.Figure()
-            fig_ov.add_trace(_go.Bar(
-                x=gex_df["strike"], y=gex_df["call_gex"],
-                name="Call GEX", marker_color="#ef4444", opacity=0.7,
-            ))
-            fig_ov.add_trace(_go.Bar(
-                x=gex_df["strike"], y=gex_df["put_gex"],
-                name="Put GEX", marker_color="#22c55e", opacity=0.7,
-            ))
-            fig_ov.update_layout(
-                template="plotly_dark", barmode="overlay",
-                xaxis_title="Strike Price", yaxis_title="GEX",
-                xaxis=dict(range=[spot_price * 0.95, spot_price * 1.05]),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin=dict(l=20, r=20, t=40, b=20),
-                height=380,
-            )
-            fig_ov.add_vline(
-                x=spot_price, line_dash="dash", line_color="black",
-                annotation_text=f"Spot ₹{spot_price:,.0f}",
-                annotation_font=dict(color="white", size=10),
-            )
-            st.plotly_chart(fig_ov, use_container_width=True)
+            
 
     with tab5:
         st.subheader("🎯 Intelligent Trade Signals")
