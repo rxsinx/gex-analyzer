@@ -286,7 +286,7 @@ def plot_menthorq_gex(
         bgcolor="rgba(8,8,8,0.94)",
         bordercolor="rgba(120,120,120,0.50)",
         borderwidth=1.5,
-        font=dict(size=10, family="monospace", color="#E2E8F0"),
+        font=dict(size=12, family="monospace", color="#E2E8F0"),
         width=340,
         text=(
             "<b>KEY LEVELS & MEANINGS</b><br>"
