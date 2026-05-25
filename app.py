@@ -863,13 +863,9 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     with tab2:
         st.subheader("Open Interest & Volume Analysis")
         st.plotly_chart(plot_oi_analysis(gex_df, spot_price), use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown("##### Volatility Smile (IV Profile)")
         st.plotly_chart(plot_iv_smile(gex_df), use_container_width=True)
-        
         st.markdown("---")
-        st.subheader("📊 OI Change Heatmap — Top 4 Movers")
+        st.subheader("📊 OI Change Heatmap — Top 8 Movers")
         
         # Get OI change data from original options_df
         try:
@@ -889,8 +885,8 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             }).reset_index(drop=True).drop_duplicates(subset=['strike'])
             
             # Get top 2 gainers
-            top_call_oi = calls_oi_change.nlargest(2, 'oi_change')
-            top_put_oi = puts_oi_change.nlargest(2, 'oi_change')
+            top_call_oi = calls_oi_change.nlargest(4, 'oi_change')
+            top_put_oi = puts_oi_change.nlargest(4, 'oi_change')
             
             fig_oi = go.Figure()
             
@@ -905,7 +901,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                         color=top_call_oi['oi_change'].values,
                         colorscale='Reds',
                         showscale=False,
-                        line=dict(width=2, color='#ef4444')
+                        line=dict(width=1, color='#ef4444')
                     ),
                     text=[f"+{int(v):,}" for v in top_call_oi['oi_change']],
                     textposition='outside',
@@ -923,7 +919,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                         color=top_put_oi['oi_change'].values,
                         colorscale='Greens',
                         showscale=False,
-                        line=dict(width=2, color='#22c55e')
+                        line=dict(width=1, color='#22c55e')
                     ),
                     text=[f"+{int(v):,}" for v in top_put_oi['oi_change']],
                     textposition='outside',
@@ -931,7 +927,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                 ))
             
             fig_oi.update_layout(
-                title="🔴 Top 2 Call + 🟢 Top 2 Put OI Gainers (Current Session)",
+                title="🔴 Top 4 Call + 🟢 Top 4 Put OI Gainers (Current Session)",
                 barmode='group',
                 template='plotly_dark',
                 height=320,
