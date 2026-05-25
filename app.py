@@ -394,10 +394,14 @@ with st.sidebar:
 
     # ── Expiry ────────────────────────────────────────────────────────────────
     st.markdown("---")
-    try:
-        sym_has_weekly = has_weekly_expiry(symbol, kite_mgr)
-    except KiteError:
-        sym_has_weekly = has_weekly_expiry(symbol, None)
+    # Always use NSE rules as primary source for weekly/monthly detection
+    sym_has_weekly = has_weekly_expiry(symbol, None)
+    # Fallback to Kite if connected and NSE rules say False
+    if not sym_has_weekly and kite_mgr:
+        try:
+            sym_has_weekly = kite_mgr.has_weekly_expiry(symbol)
+        except KiteError:
+            pass
 
     if sym_has_weekly:
         et_label    = st.radio("📅 Expiry Type", ["Weekly","Monthly"])
