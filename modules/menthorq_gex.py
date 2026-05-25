@@ -264,39 +264,60 @@ def plot_menthorq_gex(
             line=dict(color=_C_NEG, width=2.8),
             fillcolor="rgba(239,68,68,0.10)")
  
-    # ── 11. Enhanced Legend annotation ───────────────────────────────────────
+    # ── 11. Enhanced Legend annotation with detailed explanations ────────────
     fig.add_annotation(
         xref="paper", yref="paper",
         x=1.01, y=1.00,
         xanchor="left", yanchor="top",
         showarrow=False, align="left",
-        bgcolor="rgba(8,8,8,0.92)",
+        bgcolor="rgba(8,8,8,0.94)",
         bordercolor="rgba(120,120,120,0.50)",
-        borderwidth=1,
-        font=dict(size=8.5, family="monospace", color="#E2E8F0"),
-        width=310,
-        text="<b>: Dealer Positioning</b><br>".join([
-            "═══════════════════════════════",
-            "",
-            "<span style='color:#ef4444'>━━ Solid</span>  Call Resistance (Γ)",
-            "<span style='color:#fca5a5'>─ ─ Dashed</span> Call Wall (OI Volume)",
-            "",
-            "<span style='color:#22c55e'>━━ Solid</span>  Put Support (Γ)",
-            "<span style='color:#86efac'>─ ─ Dashed</span> Put Wall (OI Volume)",
-            "",
-            "<span style='color:#EAB308'>━━ Dashed</span> HVL (Regime Flip)",
-            "<span style='color:#CBD5E1'>·· Dotted</span> Spot Price",
-            "",
-            "<span style='color:#FFD700'>━━</span> GEX Profile Line",
-            "<span style='color:#FF8C00'>━━</span> Cumul. GEX (Zero = HVL)",
-            "",
-            "Γ = Gamma-based (Dealer hedging)",
-            "OI = OI-based (Volume concentration)",
-            "═══════════════════════════════",
-        ]),
+        borderwidth=1.5,
+        font=dict(size=8.2, family="monospace", color="#E2E8F0"),
+        width=340,
+        text=(
+            "<b>KEY LEVELS & MEANINGS</b><br>"
+            "═════════════════════════════════<br>"
+            "<br>"
+            "<span style='color:#ef4444;font-weight:bold'>━━ CALL RESISTANCE</span><br>"
+            "Solid Red Line = Highest Call Gamma<br>"
+            "• Dealers MOST short gamma on calls<br>"
+            "• Rally stalls here (gamma cushion)<br>"
+            "• Price resistance zone<br>"
+            "<br>"
+            "<span style='color:#fca5a5'>─ ─ CALL WALL (OI)</span><br>"
+            "Dashed Red = Peak Call Volume<br>"
+            "• Largest call concentration<br>"
+            "• Where most bullish bets reside<br>"
+            "• Secondary resistance (volume)<br>"
+            "<br>"
+            "<span style='color:#22c55e;font-weight:bold'>━━ PUT SUPPORT</span><br>"
+            "Solid Green Line = Highest Put Gamma<br>"
+            "• Dealers MOST long gamma on puts<br>"
+            "• Dips bounce here (gamma floor)<br>"
+            "• Price support zone<br>"
+            "<br>"
+            "<span style='color:#86efac'>─ ─ PUT WALL (OI)</span><br>"
+            "Dashed Green = Peak Put Volume<br>"
+            "• Largest put concentration<br>"
+            "• Where most bearish bets reside<br>"
+            "• Secondary support (volume)<br>"
+            "<br>"
+            "<span style='color:#EAB308'>━━ HVL (FLIP)</span><br>"
+            "Yellow Dash = Gamma Regime Change<br>"
+            "• Above: Positive GEX (stable)<br>"
+            "• Below: Negative GEX (volatile)<br>"
+            "<br>"
+            "<span style='color:#FFD700'>━━ GEX PROFILE</span><br>"
+            "Bar height = per-strike gamma<br>"
+            "<br>"
+            "<span style='color:#FF8C00'>━━ CUMUL. GEX</span><br>"
+            "Running sum; zero = regime flip<br>"
+            "═════════════════════════════════"
+        ),
     )
  
-    # ── 12. Layout ─────────────────────────────────────────────────────────────
+    # ── Layout (adjust right margin for wider legend) ───────────────────────
     regime_lbl = (
         "Positive GEX ▲  Dealers stabilising"
         if net_regime > 0 else
@@ -308,20 +329,22 @@ def plot_menthorq_gex(
         title=dict(
             text=(
                 f"<b>Net GEX All Expirations — {symbol}</b><br>"
-                f"<span style='font-size:12px;color:#64748B'>"
-                f"Spot ₹{spot_price:,.2f}  ·  {regime_lbl}  ·  HVL ₹{hvl:,.0f}"
+                f"<span style='font-size:11px;color:#94A3B8'>"
+                f"Why Price Sticks at Certain Levels: Gamma vs Volume Analysis"
+                f"<br>"
+                f"Spot ₹{spot_price:,.2f}  ·  {regime_lbl}  ·  Flip ₹{hvl:,.0f}"
                 f"</span>"
             ),
-            font=dict(size=15, color="white"),
-            x=0.38, y=0.97,
+            font=dict(size=14, color="white"),
+            x=0.35, y=0.97,
         ),
         plot_bgcolor=_BG_PLOT,
         paper_bgcolor=_BG_PAP,
         template="plotly_dark",
-        height=740,
+        height=780,
         hovermode="y unified",
         bargap=0.10,
-        margin=dict(l=70, r=330, t=90, b=80),
+        margin=dict(l=70, r=360, t=100, b=80),
         xaxis=dict(
             title=dict(text=f"GEX ({unit})" if unit else "GEX",
                        font=dict(size=11, color="#94A3B8")),
@@ -348,12 +371,16 @@ def plot_menthorq_gex(
     )
  
     return fig
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# generate_gex_analysis
-# ═══════════════════════════════════════════════════════════════════════════════
-
+ 
+ 
+# ============================================================================
+# ADDITIONAL: Update the generate_gex_analysis() function text explanations
+# ============================================================================
+ 
+# In modules/menthorq_gex.py, find generate_gex_analysis() function
+ 
+# Update the lines to include reasons:
+ 
 def generate_gex_analysis(
     gex_df:       pd.DataFrame,
     spot_price:   float,
@@ -361,76 +388,68 @@ def generate_gex_analysis(
     symbol:       str = "NIFTY",
 ) -> list[str]:
     """
-    Return 4 analysis sentences mirroring MenthorQ's bottom summary.
-    Strings use **bold** markdown for emphasis.
+    Return analysis sentences explaining WHY certain levels matter
     """
     net_gex   = gamma_levels.get("total_gex", 0)
     hvl       = gamma_levels.get("gamma_flip",         spot_price)
-    call_wall = gamma_levels.get("max_call_oi_strike", spot_price)
-    put_wall  = gamma_levels.get("max_put_oi_strike",  spot_price)
-
+    
+    # GAMMA-BASED levels
+    call_wall_gamma = gex_df.loc[gex_df['call_gex'].idxmin(), 'strike']
+    put_wall_gamma = gex_df.loc[gex_df['put_gex'].idxmax(), 'strike']
+    
+    # OI-BASED levels
+    call_wall_oi = float(gamma_levels.get("max_call_oi_strike", spot_price))
+    put_wall_oi = float(gamma_levels.get("max_put_oi_strike", spot_price))
+    
     above_hvl = spot_price >= hvl
-    call_dist = (call_wall  - spot_price) / spot_price * 100
-    hvl_dist  = abs(spot_price - hvl)    / spot_price * 100
-
+    call_dist = (call_wall_gamma - spot_price) / spot_price * 100
+    put_dist = (spot_price - put_wall_gamma) / spot_price * 100
+    hvl_dist  = abs(spot_price - hvl) / spot_price * 100
+ 
     lines: list[str] = []
-
-    # L1: regime
+ 
+    # L1: Regime explanation
     if net_gex > 0:
         lines.append(
-            f"⚡ {symbol} is in positive gamma — dealers buy dips and sell rallies, "
-            f"dampening intraday volatility and supporting range-bound price action."
+            f"⚡ **Positive Gamma Regime** — Dealers are net long gamma across the board. "
+            f"This means when spot moves down slightly, dealers must BUY (support), "
+            f"and when spot moves up, dealers SELL (resistance). Price action is **stabilized**."
         )
     else:
         lines.append(
-            f"⚡ {symbol} is in negative gamma — dealers must hedge in the direction "
-            f"of price moves, amplifying both rallies and sell-offs."
+            f"⚡ **Negative Gamma Regime** — Dealers are net short gamma, forced to hedge in the direction of moves. "
+            f"Down moves trigger MORE selling, up moves trigger MORE buying. Price action is **amplified** (trending)."
         )
-
-    # L2: call wall
-    if call_dist > 0:
-        lines.append(
-            f"Major call wall @ ₹{call_wall:,.0f}  ({call_dist:.1f}% above spot) — "
-            f"heavy dealer short-call positioning caps upside until cleared."
-        )
-    else:
-        lines.append(
-            f"Spot has pushed through the prior call wall (₹{call_wall:,.0f}). "
-            f"Watch for new resistance from a fresh chain fetch."
-        )
-
-    # L3: HVL / cumulative GEX context
+ 
+    # L2: Call Resistance explanation
+    lines.append(
+        f"📊 **Call Resistance @ ₹{call_wall_gamma:,.0f} (Gamma)** — This is where the STRONGEST call gamma concentration exists. "
+        f"Dealers holding short calls must hedge by selling into rallies near this strike. "
+        f"Spot is {abs(call_dist):.1f}% {'below' if call_dist > 0 else 'above'} this level. "
+        f"Separately, call volume is concentrated @ ₹{call_wall_oi:,.0f} (OI-based)."
+    )
+ 
+    # L3: Put Support explanation
+    lines.append(
+        f"🛡️ **Put Support @ ₹{put_wall_gamma:,.0f} (Gamma)** — This is where the STRONGEST put gamma floor exists. "
+        f"Dealers holding long puts have gamma that ACCELERATES buying into dips. "
+        f"Spot is {abs(put_dist):.1f}% above this level. "
+        f"Separately, put volume is concentrated @ ₹{put_wall_oi:,.0f} (OI-based)."
+    )
+ 
+    # L4: HVL and asymmetry
     if above_hvl:
         lines.append(
-            f"Spot is @ {hvl_dist:.1f}% above HVL (₹{hvl:,.0f}). "
-            f"Below HVL the cumulative GEX flips negative — "
-            f"exposing a dealer short-gamma pocket that accelerates downside "
-            f"toward the put wall at ₹{put_wall:,.0f}."
+            f"⚠️ **Gamma Flip Risk** — Spot is {hvl_dist:.1f}% above HVL (₹{hvl:,.0f}). "
+            f"If spot breaks BELOW HVL, cumulative GEX flips negative, exposing a dealer short-gamma pocket. "
+            f"This accelerates selling pressure down toward the put wall ₹{put_wall_gamma:,.0f}. "
+            f"The asymmetry: slow up, fast down (if flip occurs)."
         )
     else:
         lines.append(
-            f"Spot is @ {hvl_dist:.1f}% below HVL (₹{hvl:,.0f}). "
-            f"Reclaiming HVL pushes cumulative GEX positive and flips "
-            f"dealers long gamma — stabilising price action. "
-            f"Put wall at ₹{put_wall:,.0f} is the near-term structural floor."
+            f"✅ **Stable Below HVL** — Spot is {hvl_dist:.1f}% below HVL (₹{hvl:,.0f}). "
+            f"Cumulative GEX is negative here, but as long as spot stays above the put floor ₹{put_wall_gamma:,.0f}, "
+            f"the market is contained. Reclaiming HVL would reset cumulative GEX positive (more stable)."
         )
-
-    # L4: asymmetry conclusion
-    if net_gex > 0 and above_hvl:
-        lines.append(
-            f"The market is stable near the gamma pin, but asymmetry is building: "
-            f"slow grind upside vs fast accelerated downside if HVL ₹{hvl:,.0f} breaks."
-        )
-    elif net_gex < 0:
-        lines.append(
-            f"Both breakouts and breakdowns are amplified by dealer hedging in "
-            f"this negative gamma environment. Favour momentum over mean-reversion."
-        )
-    else:
-        lines.append(
-            f"Key bifurcation: ₹{hvl:,.0f} HVL — "
-            f"above it the cumulative GEX is positive and dealers stabilise; "
-            f"below it they accelerate. Watch the orange line crossing zero."
-        )
-
+ 
     return lines
