@@ -156,46 +156,40 @@ for k, v in _defaults.items():
 # ⚡  LIVE ENGINE  — runs on EVERY rerun (both user-triggered and autorefresh)
 # ═══════════════════════════════════════════════════════════════════════════════
 def _live_engine_tick():
-    """
-    Called at the very top of each rerun when live_mode is on and we have data.
-    Two-speed refresh:
-      Fast (every rerun, ~5 s) : spot LTP  → recalculate GEX from stored chain
-      Slow (every N seconds)   : full chain re-fetch → rebuild gex_df from Kite
-    """
-    km  = st.session_state.kite_manager
+    """Fast tick: use delta calculation instead of full recalc"""
+    km = st.session_state.kite_manager
     sym = st.session_state.selected_symbol
     exp = st.session_state.selected_expiry
-    sr  = st.session_state.strike_range_val
+    sr = st.session_state.strike_range_val
     rfr = st.session_state.risk_free_rate_val
 
-    # ── fast path: spot LTP → recalculate GEX ────────────────────────────────
     try:
         new_spot = km.get_spot_ltp(sym)
-        ohlc     = km.get_spot_ohlc(sym)
+        ohlc = km.get_spot_ohlc(sym)
 
-        if new_spot:
-            # track direction for ticker
-            st.session_state.prev_spot   = st.session_state.spot_price or new_spot
-            st.session_state.spot_price  = new_spot
-            st.session_state.spot_ohlc   = ohlc
-            st.session_state.last_spot_update = datetime.now(IST)
-
-            df_f = filter_strikes(st.session_state.options_df, new_spot, sr)
-            if df_f.empty:
-                df_f = filter_strikes(st.session_state.options_df, new_spot, 15)
-
-            gx = calculate_gex(df_f, new_spot, exp, rfr)
-            gl = find_gamma_levels(gx, new_spot)
-
-            st.session_state.gex_df       = gx
-            st.session_state.gamma_levels = gl
-            st.session_state.live_error   = None
-            st.session_state.live_tick_count += 1
-
-    except KiteAuthError as e:
-        st.session_state.live_error = f"Session expired: {e}"
-        st.session_state.live_mode  = False   # stop live mode on auth failure
-        return
+        if new_spot and st.session_state.gex_df is not None:
+            old_spot = st.session_state.spot_price
+            
+            if new_spot != old_spot:
+                # FAST PATH: Incremental GEX update (~200ms)
+                gx = calculate_gex_delta(
+                    st.session_state.gex_df,
+                    old_spot,
+                    new_spot,
+                    exp,
+                    rfr
+                )
+                gl = find_gamma_levels(gx, new_spot)
+                
+                st.session_state.update({
+                    "prev_spot": old_spot,
+                    "spot_price": new_spot,
+                    "spot_ohlc": ohlc,
+                    "gex_df": gx,
+                    "gamma_levels": gl,
+                    "last_spot_update": datetime.now(IST),
+                    "live_tick_count": st.session_state.live_tick_count + 1,
+                })
     except Exception as e:
         st.session_state.live_error = str(e)
 
