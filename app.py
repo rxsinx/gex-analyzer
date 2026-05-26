@@ -235,7 +235,22 @@ def _live_engine_tick():
         except Exception as e:
             st.session_state.chain_error = str(e)
 
-
+  ##incse of error delete from 237 to 251
+    if chain_age_s >= chain_ivl:
+        try:
+            if kite_mgr:
+                index_df, vix_df = kite_mgr.get_index_and_vix_data(
+                    sym, interval="60minute", days_back=22
+                )
+                levels = analyse_levels(index_df, new_spot)
+                st.session_state.update({
+                    "chart_index_df": index_df,
+                    "chart_vix_df": vix_df,
+                    "chart_levels": levels,
+                })
+        except Exception as e:
+            st.session_state.chain_error = f"Chart data: {e}"
+          
 # ── trigger autorefresh + run engine ─────────────────────────────────────────
 if (st.session_state.live_mode
         and st.session_state.kite_authenticated
