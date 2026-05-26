@@ -666,9 +666,11 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     atm_row = gex_df.loc[atm_idx]
     
     # Calculate the exact ratio strictly for the At-The-Money strike row
+    atm_idx = (gex_df["strike"] - spot_price).abs().idxmin()
+    atm_row = gex_df.loc[atm_idx]
     atm_pcr = atm_row["put_oi"] / atm_row["call_oi"] if atm_row["call_oi"] > 0 else 0.00
     
-    m6.metric("➡️ PCR",        f"{atm_pcr:.2f}")
+    m6.metric("➡️ PCR (ATM)", f"{atm_pcr:.2f}", help="Put/Call OI at ATM strike")
     
     m7.metric("🎯 Max Pain",   f"₹{max_pain:,.0f}",
               delta=f"{max_pain - spot_price:+.0f}")
