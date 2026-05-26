@@ -45,7 +45,7 @@ _INDEX_LTP_KEY: dict[str, str] = {
     "NIFTY":      "NSE:NIFTY 50",
     "BANKNIFTY":  "NSE:NIFTY BANK",
     "FINNIFTY":   "NSE:NIFTY FIN SERVICE",
-    "MIDCPNIFTY": "NSE:NIFTY MID SELECT",
+    "MIDCPNIFTY": "NSE:NIFTY MIDCAP SELECT",
     "SENSEX":     "BSE:SENSEX",
     "BANKEX":     "BSE:BANKEX",
 }
@@ -57,7 +57,7 @@ _KNOWN_INDEX_TOKENS: dict[str, int] = {
     "NIFTY BANK":        260105,
     "INDIA VIX":         264969,
     "NIFTY FIN SERVICE": 257801,
-    "NIFTY MID SELECT": 288009,
+    "NIFTY MIDCAP SELECT": 288009,
 }
 
 
