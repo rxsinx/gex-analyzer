@@ -275,13 +275,24 @@ class KiteManager:
     def has_weekly_expiry(self, symbol: str) -> bool:
         expiries = self.get_available_expiries(symbol)
         if len(expiries) < 2:
-           return False
+             # Check hardcoded rules for quick answer
+             return _EXPIRY_RULES.get(symbol.upper(), _DEFAULT_RULE)["has_weekly"]
+    
         dates = [datetime.strptime(e, "%d-%b-%Y").date() for e in expiries]
-        # Check if any two consecutive expiries are 7-10 days apart (weekly pattern)
-        for i in range(len(dates) - 1):
-            diff_days = (dates[i + 1] - dates[i]).days
-            if 6 <= diff_days <= 11:  # Weekly expiry tolerance: 6-11 days apart
-                 return True
+        today = date.today()
+    
+        # Check if NEXT expiry is within 7-10 days
+        next_expiry = dates[0]
+        days_to_next = (next_expiry - today).days
+               
+        # If next expiry is 7-10 days away, it's weekly
+        # OR check gap between first two expiries
+        if 6 <= days_to_next <= 11:
+            return True
+        if len(dates) >= 2:
+            if 6 <= (dates[1] - dates[0]).days <= 11:
+                return True
+               
         return False   
 
     # ── v3 quote wrappers ────────────────────────────────────────────────────
