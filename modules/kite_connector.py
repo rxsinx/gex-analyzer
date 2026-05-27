@@ -1,25 +1,10 @@
 """
-Kite Connect v3 integration - with SENSEX and BANKEX support
+Kite Connect v3 integration - CORRECTED for proper exchange detection
 Reference: https://kite.trade/docs/connect/v3/market-quotes/
-           https://kite.trade/docs/connect/v3/historical/
 
-Rules
------
-* NO st.* calls inside this module – callers handle UI.
-  All failures raise KiteError subclasses so the caller can
-  display them exactly where they belong in the Streamlit UI.
-* Spot price  → kite.ltp()    (/quote/ltp,  ≤1000 instruments)
-* Full quotes → kite.quote()  (/quote,       ≤500 instruments)
-* OHLC        → kite.ohlc()  (/quote/ohlc,  ≤1000 instruments)
-* History     → kite.historical_data()
-* All NFO instrument metadata (lot_size, tick_size, strike_interval,
-  expiry dates) come from the instruments CSV – nothing hardcoded.
-  
-SENSEX & BANKEX
-  - Both are BSE instruments (exchange:tradingsymbol format differs)
-  - SENSEX: BSE:SENSEX-I (or BSE:SENSEX)
-  - BANKEX: BSE:BANKEX-I (or BSE:BANKEX)
-  - Check with your Kite account for exact symbols
+CORRECTED RULES:
+- NSE indices (NFO): NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY
+- BSE indices (BFO): SENSEX, BANKEX
 """
 
 from __future__ import annotations
@@ -46,16 +31,26 @@ class KiteDataError(KiteError):
     """Data fetch failure."""
 
 
+# ── CORRECTED: Index to exchange mapping ─────────────────────────────────────
+_INDEX_EXCHANGE_MAP: dict[str, str] = {
+    # NSE Indices → NFO exchange
+    "NIFTY":      "NFO",
+    "BANKNIFTY":  "NFO",
+    "FINNIFTY":   "NFO",
+    "MIDCPNIFTY": "NFO",
+    # BSE Indices → BFO exchange (CORRECTED)
+    "SENSEX":     "BFO",
+    "BANKEX":     "BFO",
+}
+
 # ── index LTP keys (exchange:tradingsymbol per Kite v3 docs) ────────────────
-# NSE indices
 _INDEX_LTP_KEY: dict[str, str] = {
     "NIFTY":      "NSE:NIFTY 50",
     "BANKNIFTY":  "NSE:NIFTY BANK",
     "FINNIFTY":   "NSE:NIFTY FIN SERVICE",
     "MIDCPNIFTY": "NSE:NIFTY MIDCAP",
-    # BSE indices — try these formats; may need adjustment per Kite account
-    "SENSEX":     "BSE:SENSEX",           # Alternative: "BSE:SENSEX-I"
-    "BANKEX":     "BSE:BANKEX",           # Alternative: "BSE:BANKEX-I"
+    "SENSEX":     "BSE:SENSEX",
+    "BANKEX":     "BSE:BANKEX",
 }
 
 # Fallback trading symbols if primary doesn't work
@@ -64,15 +59,14 @@ _INDEX_LTP_KEY_FALLBACK: dict[str, list[str]] = {
     "BANKEX": ["BSE:BANKEX-I", "BSE:BANKEX"],
 }
 
-# ── known instrument tokens for NSE/BSE indices (stable, assigned by exchange) ───
-# Used as fallback when instruments-CSV search fails.
+# ── known instrument tokens for NSE/BSE indices ───────────────────────────────
 _KNOWN_INDEX_TOKENS: dict[str, int] = {
     # NSE
     "NIFTY 50":          256265,
     "NIFTY BANK":        260105,
     "INDIA VIX":         264969,
     "NIFTY FIN SERVICE": 257801,
-    "NIFTY MIDCAP SELECT": 288009,
+    "NIFTY MIDCAP":      288009,
     # BSE
     "SENSEX":            4,
     "SENSEX-I":          4,
@@ -113,7 +107,7 @@ def iv_from_ltp(S, K, T, r, ltp, opt="call"):
 class KiteManager:
     """
     Wraps Kite Connect v3 API with clean error propagation.
-    Supports NSE (NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY) and BSE (SENSEX, BANKEX).
+    Supports NSE (NFO) and BSE (BFO) indices with proper exchange detection.
     No st.* calls – all failures raise KiteError subclasses.
     """
 
@@ -130,10 +124,7 @@ class KiteManager:
         return self.kite.login_url()
 
     def set_access_token(self, request_token: str) -> tuple[bool, str]:
-        """
-        Returns (success, message).
-        Caller decides how to display it.
-        """
+        """Returns (success, message)."""
         try:
             data = self.kite.generate_session(
                 request_token, api_secret=self.api_secret)
@@ -148,10 +139,7 @@ class KiteManager:
     # ── step-by-step connection test ────────────────────────────────────────
 
     def test_connection(self, symbol: str = "NIFTY") -> dict[str, dict]:
-        """
-        Run sequential connection checks.
-        Returns dict of {step: {ok, msg}} for display in a debug panel.
-        """
+        """Run sequential connection checks."""
         results: dict[str, dict] = {}
 
         # 1. Profile / session
@@ -167,7 +155,7 @@ class KiteManager:
                 "ok": False, "label": "Session",
                 "msg": f"FAILED – {exc}  ← token may be expired (resets 6 AM)",
             }
-            return results   # nothing else will work
+            return results
 
         # 2. LTP
         key = _INDEX_LTP_KEY.get(symbol.upper(), "NSE:NIFTY 50")
@@ -178,13 +166,13 @@ class KiteManager:
             results["2_ltp"] = {
                 "ok": ltp is not None,
                 "label": f"LTP ({key})",
-                "msg": f"₹{ltp:,.2f}" if ltp else f"key '{key}' missing in response {list(resp.keys())}",
+                "msg": f"₹{ltp:,.2f}" if ltp else f"key '{key}' missing",
             }
         except Exception as exc:
             results["2_ltp"] = {"ok": False, "label": f"LTP ({key})", "msg": str(exc)}
 
-        # 3. NFO instruments (for NSE; BSE uses different exchange)
-        exchange = "NFO" if "NSE" in key else "BFO"
+        # 3. Instruments
+        exchange = _INDEX_EXCHANGE_MAP.get(symbol.upper(), "NFO")
         try:
             insts = self._instruments(exchange)
             results["3_instruments"] = {
@@ -215,7 +203,8 @@ class KiteManager:
         try:
             rows = self._sym_instruments(symbol)
             if rows:
-                ts  = f"NFO:{rows[0]['tradingsymbol']}" if "NSE" in key else f"BFO:{rows[0]['tradingsymbol']}"
+                exchange = _INDEX_EXCHANGE_MAP.get(symbol.upper(), "NFO")
+                ts  = f"{exchange}:{rows[0]['tradingsymbol']}"
                 q   = self.kite.quote([ts])
                 got = q.get(ts, {})
                 results["5_quote"] = {
@@ -235,11 +224,7 @@ class KiteManager:
     # ── instruments cache ────────────────────────────────────────────────────
 
     def _instruments(self, exchange: str = "NFO") -> list[dict]:
-        """Return cached instruments for exchange. Raises KiteDataError on failure.
-        
-        For NSE options: use "NFO"
-        For BSE options: use "BFO"
-        """
+        """Return cached instruments for exchange. Raises KiteDataError on failure."""
         if exchange not in self._cache:
             try:
                 self._cache[exchange] = self.kite.instruments(exchange)
@@ -250,10 +235,12 @@ class KiteManager:
         return self._cache[exchange]
 
     def _sym_instruments(self, symbol: str) -> list[dict]:
-        """All options rows (NFO/BFO CE/PE) for symbol."""
+        """All options rows (NFO/BFO CE/PE) for symbol. 
+        CORRECTED: Auto-detects exchange based on symbol."""
         sym = symbol.upper()
-        # Determine exchange based on symbol
-        exchange = "BFO" if sym in ["SENSEX", "BANKEX"] else "NFO"
+        
+        # CORRECTED: Determine exchange from mapping
+        exchange = _INDEX_EXCHANGE_MAP.get(sym, "NFO")
         
         return [
             i for i in self._instruments(exchange)
@@ -304,19 +291,15 @@ class KiteManager:
     def has_weekly_expiry(self, symbol: str) -> bool:
         expiries = self.get_available_expiries(symbol)
         if len(expiries) < 2:
-             # Check hardcoded rules for quick answer
              from modules.utils import _EXPIRY_RULES, _DEFAULT_RULE
              return _EXPIRY_RULES.get(symbol.upper(), _DEFAULT_RULE)["has_weekly"]
     
         dates = [datetime.strptime(e, "%d-%b-%Y").date() for e in expiries]
         today = date.today()
     
-        # Check if NEXT expiry is within 7-10 days
         next_expiry = dates[0]
         days_to_next = (next_expiry - today).days
                
-        # If next expiry is 7-10 days away, it's weekly
-        # OR check gap between first two expiries
         if 6 <= days_to_next <= 11:
             return True
         if len(dates) >= 2:
@@ -328,15 +311,11 @@ class KiteManager:
     # ── v3 quote wrappers ────────────────────────────────────────────────────
 
     def get_spot_ltp(self, symbol: str) -> float:
-        """
-        /quote/ltp for index spot.  Raises KiteAuthError or KiteDataError.
-        Tries primary key first, then fallbacks for BSE indices.
-        """
+        """Fetch LTP with fallback for BSE indices."""
         key = _INDEX_LTP_KEY.get(symbol.upper())
         if not key:
             raise KiteDataError(f"No LTP key for '{symbol}'")
         
-        # Try primary key
         try:
             resp = self.kite.ltp([key])
             data = resp.get(key)
@@ -345,9 +324,9 @@ class KiteManager:
         except Exception as exc:
             err = str(exc).lower()
             if "token" in err or "session" in err or "login" in err or "403" in err:
-                raise KiteAuthError(f"Session error on ltp({key}): {exc}") from exc
+                raise KiteAuthError(f"Session error: {exc}") from exc
         
-        # Fallback for BSE indices (SENSEX, BANKEX)
+        # Fallback for BSE indices
         if symbol.upper() in _INDEX_LTP_KEY_FALLBACK:
             for alt_key in _INDEX_LTP_KEY_FALLBACK[symbol.upper()]:
                 try:
@@ -356,20 +335,12 @@ class KiteManager:
                     if data and data.get("last_price") is not None:
                         return float(data["last_price"])
                 except Exception:
-                    pass  # Try next fallback
+                    pass
         
-        # No key worked
-        raise KiteDataError(
-            f"ltp response missing key '{key}'. "
-            f"Got keys: {list(resp.keys()) if 'resp' in locals() else 'empty'}. "
-            f"For {symbol}, check Kite account symbols or try alternative trading symbols."
-        )
+        raise KiteDataError(f"LTP fetch failed for '{symbol}'. Check market hours (9:15 AM - 3:30 PM IST)")
 
     def get_spot_ohlc(self, symbol: str) -> Optional[dict]:
-        """
-        /quote/ohlc – returns dict(last_price, open, high, low, close)
-        Returns None on failure (non-critical, used for display only).
-        """
+        """Fetch OHLC data."""
         key = _INDEX_LTP_KEY.get(symbol.upper())
         if not key:
             return None
@@ -389,7 +360,7 @@ class KiteManager:
             return None
 
     def _quote_chunked(self, keys: list[str], chunk_size: int = 450) -> dict:
-        """Fetch /quote in ≤500-key chunks. Collects all; re-raises on total failure."""
+        """Fetch /quote in chunks."""
         merged: dict = {}
         errors: list[str] = []
         for i in range(0, len(keys), chunk_size):
@@ -413,25 +384,21 @@ class KiteManager:
         expiry: str,
         risk_free_rate: float = 0.07,
     ) -> tuple[pd.DataFrame, float]:
-        """
-        Fetch option chain via Kite /quote.
-        Supports both NSE (NIFTY, BANKNIFTY, etc.) and BSE (SENSEX, BANKEX).
-        Raises KiteAuthError or KiteDataError on failure.
-        Returns (DataFrame, spot_price).
-        """
-        # 1. parse expiry
+        """Fetch option chain with CORRECTED exchange detection."""
         try:
             target_date = datetime.strptime(expiry, "%d-%b-%Y").date()
         except ValueError as exc:
             raise KiteDataError(f"Invalid expiry '{expiry}': {exc}") from exc
 
-        # 2. filter instruments (NFO for NSE, BFO for BSE)
         all_rows = self._sym_instruments(symbol)
         if not all_rows:
+            # CORRECTED: Better error message showing which exchange was used
+            exchange = _INDEX_EXCHANGE_MAP.get(symbol.upper(), "NFO")
             raise KiteDataError(
-                f"No options found for '{symbol}'. "
-                "Check that symbol is valid and options exist on Kite."
+                f"No {exchange} instruments found for '{symbol}'. "
+                f"Instruments may not have loaded – check session."
             )
+        
         rows = [r for r in all_rows if r.get("expiry") == target_date]
         if not rows:
             avail = self.get_available_expiries(symbol)[:6]
@@ -440,10 +407,8 @@ class KiteManager:
                 f"First 6 available: {avail}"
             )
 
-        # 3. spot price
-        spot = self.get_spot_ltp(symbol)   # raises on failure
+        spot = self.get_spot_ltp(symbol)
 
-        # 4. DTE
         now = datetime.now()
         dte = max(
             (datetime.combine(target_date, datetime.min.time()) - now
@@ -451,12 +416,11 @@ class KiteManager:
             1 / 365,
         )
 
-        # 5. fetch quotes (NFO for NSE, BFO for BSE)
-        exchange = "BFO" if symbol.upper() in ["SENSEX", "BANKEX"] else "NFO"
+        # CORRECTED: Use exchange from mapping
+        exchange = _INDEX_EXCHANGE_MAP.get(symbol.upper(), "NFO")
         ts_keys = [f"{exchange}:{r['tradingsymbol']}" for r in rows]
-        quotes  = self._quote_chunked(ts_keys)   # raises on total failure
+        quotes  = self._quote_chunked(ts_keys)
 
-        # 6. build DataFrame
         option_rows: list[dict] = []
         missing = 0
         for inst in rows:
@@ -507,8 +471,7 @@ class KiteManager:
         if not option_rows:
             raise KiteDataError(
                 f"All {len(rows)} contracts returned empty quotes. "
-                f"({missing} missing entirely). "
-                "Market may be closed or session may have expired."
+                f"({missing} missing). Market may be closed or session expired."
             )
 
         df = (pd.DataFrame(option_rows)
@@ -516,14 +479,10 @@ class KiteManager:
               .reset_index(drop=True))
         return df, spot
 
-    # ── historical data for charts ───────────────────────────────────────────
+    # ── historical data ──────────────────────────────────────────────────────
 
     def _get_instrument_token(self, tradingsymbol: str, exchange: str = "NSE") -> Optional[int]:
-        """
-        Find instrument token by exact tradingsymbol match.
-        Falls back to _KNOWN_INDEX_TOKENS for major indices.
-        """
-        # Try instruments CSV first
+        """Find instrument token by tradingsymbol."""
         try:
             insts = self._instruments(exchange)
             for inst in insts:
@@ -531,7 +490,6 @@ class KiteManager:
                     return int(inst["instrument_token"])
         except Exception:
             pass
-        # Fallback: known tokens
         return _KNOWN_INDEX_TOKENS.get(tradingsymbol.upper())
 
     def get_historical_candles(
@@ -540,15 +498,9 @@ class KiteManager:
         interval: str = "60minute",
         days_back: int = 22,
     ) -> pd.DataFrame:
-        """
-        Fetch OHLCV history via Kite historical data API.
-
-        interval: minute, 3minute, 5minute, 10minute, 15minute,
-                  30minute, 60minute, day, week, month
-        days_back: calendar days to look back (use ~22 for 1-month of 1hr data)
-        """
+        """Fetch OHLCV history."""
         to_dt   = datetime.now()
-        from_dt = to_dt - timedelta(days=days_back + 10)   # +10 for weekends
+        from_dt = to_dt - timedelta(days=days_back + 10)
 
         try:
             raw = self.kite.historical_data(
@@ -561,21 +513,18 @@ class KiteManager:
             )
         except Exception as exc:
             raise KiteDataError(
-                f"historical_data(token={instrument_token}, interval={interval}) "
-                f"failed: {exc}"
+                f"historical_data failed: {exc}"
             ) from exc
 
         if not raw:
             raise KiteDataError(
-                f"historical_data returned 0 candles for token={instrument_token}. "
-                "Token may be invalid or market has no data for this range."
+                f"No historical data returned. Token may be invalid."
             )
 
         df = pd.DataFrame(raw)
         df["date"] = pd.to_datetime(df["date"])
         df = df.set_index("date").sort_index()
 
-        # Keep only 'days_back' worth of calendar days
         cutoff = pd.Timestamp.now(tz=df.index.tz) - pd.Timedelta(days=days_back)
         df = df[df.index >= cutoff]
 
@@ -587,15 +536,7 @@ class KiteManager:
         interval: str = "60minute",
         days_back: int = 22,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Fetch 1-hr (or any interval) candles for *symbol* and India VIX.
-        Returns (index_df, vix_df).  Both DataFrames have DatetimeIndex
-        and columns [open, high, low, close, volume].
-        
-        Note: For BSE indices (SENSEX, BANKEX), VIX data may not be available
-        via the same mechanism. This function will attempt to fetch India VIX
-        as a substitute volatility measure.
-        """
+        """Fetch index and VIX data."""
         ltp_key   = _INDEX_LTP_KEY.get(symbol.upper(), "NSE:NIFTY 50")
         exchange, ts = ltp_key.split(":", 1)
 
@@ -603,22 +544,15 @@ class KiteManager:
         vix_token   = self._get_instrument_token("INDIA VIX", "NSE")
 
         if index_token is None:
-            raise KiteDataError(
-                f"Could not find instrument token for {ts} on {exchange}. "
-                "Check Kite instruments list."
-            )
+            raise KiteDataError(f"Could not find token for {ts}")
         if vix_token is None:
-            raise KiteDataError(
-                "Could not find INDIA VIX instrument token on NSE."
-            )
+            raise KiteDataError("Could not find INDIA VIX token")
 
         index_df = self.get_historical_candles(index_token, interval, days_back)
         vix_df   = self.get_historical_candles(vix_token,   interval, days_back)
 
         return index_df, vix_df
 
-
-# ── Streamlit session helper ─────────────────────────────────────────────────
 
 def init_kite_session() -> Optional[KiteManager]:
     import streamlit as st
