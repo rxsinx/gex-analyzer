@@ -111,6 +111,9 @@ def _last_occurrence_in_month(year: int, month: int,
 
 
 def has_weekly_expiry(symbol: str, kite_manager=None) -> bool:
+    from modules.utils import _EXPIRY_RULES, _DEFAULT_RULE
+    rule = _EXPIRY_RULES.get(symbol.upper(), _DEFAULT_RULE)
+    return bool(rule.get("has_weekly", True))
     """
     Return True if *symbol* has weekly expiries.
     Kite instruments are the authoritative source; falls back to _EXPIRY_RULES.
