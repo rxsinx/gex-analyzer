@@ -266,6 +266,11 @@ st.markdown(
 # ═══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ═══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# SIDEBAR - UPDATED WITH SENSEX AND BANKEX SUPPORT
+# ═══════════════════════════════════════════════════════════════════════════════
+# Insert this section into your app.py sidebar (replace the existing symbol selection)
+
 with st.sidebar:
     st.header("⚙️ Configuration")
 
@@ -354,7 +359,8 @@ with st.sidebar:
 
         with st.expander("🔍 Debug Connection", expanded=False):
             st.caption("Tests each Kite API step independently")
-            debug_sym = st.selectbox("Test symbol:", ["NIFTY","BANKNIFTY","FINNIFTY"],
+            debug_sym = st.selectbox("Test symbol:", 
+                                      ["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","SENSEX","BANKEX"],
                                       key="debug_sym")
             if st.button("▶ Run Diagnostics", key="run_diag"):
                 km_d = st.session_state.kite_manager
@@ -370,7 +376,8 @@ with st.sidebar:
                             "**Common fixes:**\n"
                             "- Token expires at 6 AM daily → re-authenticate\n"
                             "- Instruments load takes ~30 s on first call\n"
-                            "- API key must have F&O data permissions"
+                            "- API key must have F&O data permissions\n"
+                            "- For BSE (SENSEX/BANKEX): check if BFO segment is enabled"
                         )
 
             if st.button("🗑 Clear Instrument Cache", key="clear_cache"):
@@ -381,10 +388,26 @@ with st.sidebar:
     st.markdown("---")
     kite_mgr = st.session_state.kite_manager
 
-    # ── Symbol ────────────────────────────────────────────────────────────────
-    symbol = st.selectbox("📈 Index",
-                           ["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY"])
+    # ── Symbol Selection (NOW WITH SENSEX & BANKEX) ───────────────────────────
+    st.subheader("📈 Index Selection")
+    
+    symbol = st.selectbox(
+        "Select Index",
+        ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"],
+        help="NSE: NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY\nBSE: SENSEX, BANKEX"
+    )
     st.session_state.selected_symbol = symbol
+    
+    # Index info display
+    index_info = {
+        "NIFTY":      "NSE · Lot: 65 · 50 pts",
+        "BANKNIFTY":  "NSE · Lot: 30 · 100 pts",
+        "FINNIFTY":   "NSE · Lot: 60 · 50 pts",
+        "MIDCPNIFTY": "NSE · Lot: 120 · 25 pts",
+        "SENSEX":     "BSE · Lot: 20 · 100 pts",
+        "BANKEX":     "BSE · Lot: 30 · 100 pts",
+    }
+    st.caption(f"ℹ️ {index_info.get(symbol, 'Unknown')}")
 
     # ── Lot size / strike interval ────────────────────────────────────────────
     try:
@@ -403,7 +426,9 @@ with st.sidebar:
 
     # ── Expiry ────────────────────────────────────────────────────────────────
     st.markdown("---")
-    # Always use NSE rules as primary source for weekly/monthly detection
+    st.subheader("📅 Expiry Configuration")
+    
+    # Determine weekly/monthly availability for selected symbol
     sym_has_weekly = has_weekly_expiry(symbol, None)
     # Fallback to Kite if connected and NSE rules say False
     if not sym_has_weekly and kite_mgr:
@@ -413,11 +438,16 @@ with st.sidebar:
             pass
 
     if sym_has_weekly:
-        et_label    = st.radio("📅 Expiry Type", ["Weekly","Monthly"])
+        et_label    = st.radio("Expiry Type", ["Weekly","Monthly"], horizontal=True)
         expiry_type = "weekly" if et_label == "Weekly" else "monthly"
     else:
-        st.info(f"📅 {symbol}: Monthly only")
         expiry_type = "monthly"
+        expiry_info = {
+            "BANKNIFTY": "📅 BANKNIFTY: Monthly only (no weekly)",
+            "BANKEX":    "📅 BANKEX: Monthly only",
+        }
+        if symbol in expiry_info:
+            st.info(expiry_info[symbol])
 
     try:
         available_expiries = get_expiries_for_symbol(symbol, kite_mgr, expiry_type)
@@ -429,23 +459,23 @@ with st.sidebar:
 
     expiry_date = st.selectbox(
         "Select Expiry", available_expiries, index=0,
-        help="From Kite instruments" if kite_mgr else "Computed from NSE rules")
+        help="From Kite instruments" if kite_mgr else "Computed from NSE/BSE rules")
     st.session_state.selected_expiry = expiry_date
 
-    # ── Parameters — mirror to session state for live engine ──────────────────
+    # ── Parameters ───────────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("📍 Parameters")
     strike_range = st.slider(
-        "Strike Range (%)", 5, 10, st.session_state.strike_range_val, 1)
-    st.session_state.strike_range_val = strike_range   # live engine reads this
+        "Strike Range (%)", 5, 15, st.session_state.strike_range_val, 1)
+    st.session_state.strike_range_val = strike_range
 
     risk_free_rate = st.number_input(
         "Risk-Free Rate (%)", 0.0, 15.0,
         round(st.session_state.risk_free_rate_val * 100, 1), 0.1
     ) / 100
-    st.session_state.risk_free_rate_val = risk_free_rate  # live engine reads this
+    st.session_state.risk_free_rate_val = risk_free_rate
 
-    # ── Manual spot refresh (used when NOT in live mode) ──────────────────────
+    # ── Manual spot refresh ───────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("💹 Spot Price")
     sc1, sc2 = st.columns(2)
@@ -536,7 +566,7 @@ with st.sidebar:
                     gx  = calculate_gex(df_f, spot, expiry_date, risk_free_rate)
                     gl  = find_gamma_levels(gx, spot)
                     now = datetime.now(IST)
-                    # Fetch OHLC now if not already fetched (gives prev-day close)
+                    # Fetch OHLC now if not already fetched
                     if not st.session_state.get("spot_ohlc") and kite_mgr:
                         try:
                             ohlc_init = kite_mgr.get_spot_ohlc(symbol)
