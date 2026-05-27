@@ -57,7 +57,7 @@ _KNOWN_INDEX_TOKENS: dict[str, int] = {
     "NIFTY BANK":        260105,
     "INDIA VIX":         264969,
     "NIFTY FIN SERVICE": 257801,
-    "NIFTY MIDCAP SELECT": 288009,
+    "NSE:NIFTY MIDCAP": 288009,
 }
 
 
