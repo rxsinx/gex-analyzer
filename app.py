@@ -27,7 +27,7 @@ from modules.data_fetcher import (
     fetch_option_chain, generate_sample_data,
     get_live_spot_price, get_index_quote, get_market_status,
 )
-from modules.gex_calculator import calculate_gex, find_gamma_levels
+from modules.gex_calculator import calculate_gex, find_gamma_levels, calculate_gex_delta
 from modules.visualizations import (
     plot_gex_profile, plot_spot_gex_levels, plot_oi_analysis,
     plot_pcr_analysis, plot_iv_smile, plot_greeks_heatmap,
