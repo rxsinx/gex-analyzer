@@ -289,24 +289,14 @@ class KiteManager:
         return [d.strftime("%d-%b-%Y").upper() for d in sorted(exp_set)]
 
     def has_weekly_expiry(self, symbol: str) -> bool:
-        expiries = self.get_available_expiries(symbol)
-        if len(expiries) < 2:
-             from modules.utils import _EXPIRY_RULES, _DEFAULT_RULE
-             return _EXPIRY_RULES.get(symbol.upper(), _DEFAULT_RULE)["has_weekly"]
-    
-        dates = [datetime.strptime(e, "%d-%b-%Y").date() for e in expiries]
-        today = date.today()
-    
-        next_expiry = dates[0]
-        days_to_next = (next_expiry - today).days
-               
-        if 6 <= days_to_next <= 11:
-            return True
-        if len(dates) >= 2:
-            if 6 <= (dates[1] - dates[0]).days <= 11:
-                return True
-               
-        return False
+        """Check if symbol has weekly expiries.
+        Uses the CORRECTED rules from utils.py"""
+        from modules.utils import _EXPIRY_RULES, _DEFAULT_RULE
+        
+        rule = _EXPIRY_RULES.get(symbol.upper(), _DEFAULT_RULE)
+        has_weekly = rule.get("has_weekly", True)
+        
+        return bool(has_weekly)
 
     # ── v3 quote wrappers ────────────────────────────────────────────────────
 
