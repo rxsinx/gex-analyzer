@@ -61,8 +61,6 @@ except Exception:
     STRIKE_RANGE_DEFAULT           = 10
 
 IST = pytz.timezone("Asia/Kolkata")
-ticker_placeholder = st.empty()
-metrics_placeholder = st.empty()
 
 # ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="GEX Terminal", page_icon="📊",
@@ -174,7 +172,7 @@ def _live_engine_tick():
             
             if new_spot != old_spot:
                 # FAST PATH: Incremental GEX update (~200ms)
-                gx = calculate_gex(
+                gx = calculate_gex_delta(
                     st.session_state.gex_df,
                     old_spot,
                     new_spot,
@@ -231,7 +229,7 @@ def _live_engine_tick():
         except Exception as e:
             st.session_state.chain_error = str(e)
 
-  ##incse of error delete from 237 to 251 / FIXED: Get kite_mgr from session state
+  ##incse of error delete from 237 to 251
     if chain_age_s >= chain_ivl:
         try:
             km_chart = st.session_state.kite_manager  # ← GET FROM SESSION
@@ -253,15 +251,11 @@ def _live_engine_tick():
         except Exception as e:
             st.session_state.chain_error = f"Chart data: {e}"
           
-# ── TRIGGER AUTOREFRESH + UPDATE PLACEHOLDERS (smooth, no blink) ───────────────────
+# ── trigger autorefresh + run engine ─────────────────────────────────────────
 if (st.session_state.live_mode
         and st.session_state.kite_authenticated
         and st.session_state.data_loaded):
-
-    # 5 second autorefresh      
     st_autorefresh(interval=5_000, limit=None, key="live_engine_ar")
-
-    # Run the update logic      
     _live_engine_tick()
 
 
@@ -627,36 +621,42 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     si           = st.session_state.strike_interval
     symbol       = st.session_state.selected_symbol
 
+    pcr                = gamma_levels.get("pcr", 1.0)
+    max_pain           = gamma_levels.get("max_pain", spot_price)
+    gamma_flip         = gamma_levels.get("gamma_flip", spot_price)
+    net_gex            = gamma_levels.get("total_gex", 0)
+    max_call_oi_strike = gamma_levels.get("max_call_oi_strike", spot_price)
+    max_put_oi_strike  = gamma_levels.get("max_put_oi_strike", spot_price)
+
     # ── ⚡ LIVE STATUS BAR ────────────────────────────────────────────────────
-    with ticker_placeholder.container():
-        tick_delta = spot_price - prev_spot
+    tick_delta = spot_price - prev_spot
 
-        ohlc       = st.session_state.spot_ohlc or {}
-        day_close  = ohlc.get("close") or prev_spot          # prev session close
-        spot_delta     = spot_price - day_close
-        spot_delta_pct = (spot_delta / day_close * 100) if day_close else 0
-    
-        # Arrow direction tracks tick-to-tick momentum, not day change
-        tick_arrow  = "▲" if tick_delta > 0 else "▼" if tick_delta < 0 else "●"
-        tick_class  = "tick-up" if tick_delta > 0 else "tick-dn" if tick_delta < 0 else "tick-flat"
+    ohlc       = st.session_state.spot_ohlc or {}
+    day_close  = ohlc.get("close") or prev_spot          # prev session close
+    spot_delta     = spot_price - day_close
+    spot_delta_pct = (spot_delta / day_close * 100) if day_close else 0
 
-        now_ist = datetime.now(IST)
-        chain_age_s = int((now_ist - st.session_state.last_update).total_seconds()) \
-                      if st.session_state.last_update else 0
-        spot_age_s  = int((now_ist - st.session_state.last_spot_update).total_seconds()) \
-                      if st.session_state.last_spot_update else 0
-    
-        chain_ivl   = st.session_state.chain_refresh_interval
-        chain_eta   = max(0, chain_ivl - chain_age_s)
+    # Arrow direction tracks tick-to-tick momentum, not day change
+    tick_arrow  = "▲" if tick_delta > 0 else "▼" if tick_delta < 0 else "●"
+    tick_class  = "tick-up" if tick_delta > 0 else "tick-dn" if tick_delta < 0 else "tick-flat"
 
-        if st.session_state.live_mode:
-            bar_class = "live-bar"
-            mode_tag  = '<span class="live-dot"></span><b>LIVE</b>'
-        else:
-            bar_class = "live-bar-off"
-            mode_tag  = "⏸ PAUSED"
+    now_ist = datetime.now(IST)
+    chain_age_s = int((now_ist - st.session_state.last_update).total_seconds()) \
+                  if st.session_state.last_update else 0
+    spot_age_s  = int((now_ist - st.session_state.last_spot_update).total_seconds()) \
+                  if st.session_state.last_spot_update else 0
 
-        st.markdown(f"""
+    chain_ivl   = st.session_state.chain_refresh_interval
+    chain_eta   = max(0, chain_ivl - chain_age_s)
+
+    if st.session_state.live_mode:
+        bar_class = "live-bar"
+        mode_tag  = '<span class="live-dot"></span><b>LIVE</b>'
+    else:
+        bar_class = "live-bar-off"
+        mode_tag  = "⏸ PAUSED"
+
+    st.markdown(f"""
 <div class="{bar_class}">
   <span>{mode_tag}&nbsp;&nbsp;
     <span class="ticker {tick_class}">
@@ -672,52 +672,51 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
   </span>
 </div>""", unsafe_allow_html=True)
 
-    # ✅ UPDATE METRICS IN PLACEHOLDER (NO BLINK!)
-    with metrics_placeholder.container():
-        pcr                = gamma_levels.get("pcr", 1.0)
-        max_pain           = gamma_levels.get("max_pain", spot_price)
-        gamma_flip         = gamma_levels.get("gamma_flip", spot_price)
-        net_gex            = gamma_levels.get("total_gex", 0)
-        max_call_oi_strike = gamma_levels.get("max_call_oi_strike", spot_price)
-        max_put_oi_strike  = gamma_levels.get("max_put_oi_strike", spot_price)
-
-        # ATM PCR
-        atm_idx = (gex_df["strike"] - spot_price).abs().idxmin()
-        atm_row = gex_df.loc[atm_idx]
-        atm_pcr = atm_row["put_oi"] / atm_row["call_oi"] if atm_row["call_oi"] > 0 else 0.00
-        
-        # ── metrics rows ──────────────────────────────────────────────────────────
-        ohlc = st.session_state.spot_ohlc or {}
-    
-        m1,m2,m3,m4,m5,m6,m7,m8,m9 = st.columns(9)
-        spot_delta_disp = f"{spot_delta:+.1f}" if spot_delta != 0 else None
-        m1.metric("💰 Spot",       f"₹{spot_price:,.0f}", delta=spot_delta_disp)
-        m2.metric("Open",          f"₹{ohlc['open']:,.0f}"  if ohlc else "—")
-        m3.metric("High",          f"₹{ohlc['high']:,.0f}"  if ohlc else "—")
-        m4.metric("Low",           f"₹{ohlc['low']:,.0f}"   if ohlc else "—")
-        m5.metric("Prev",          f"₹{ohlc['close']:,.0f}" if ohlc else "—")
-        m6.metric("➡️ PCR (ATM)", f"{atm_pcr:.2f}", help="Put/Call OI at ATM strike")
-        m7.metric("🎯 Max Pain",   f"₹{max_pain:,.0f}",
-                  delta=f"{max_pain - spot_price:+.0f}")
-        m8.metric("🔄 Gamma Flip", f"₹{gamma_flip:,.0f}",
-                  delta=f"{gamma_flip - spot_price:+.0f}")
-        m9.metric("📊 Regime",     "🟢 +GEX" if net_gex>0 else "🔴 -GEX")
-    
-        n1,n2,n3,n4,n5,n6,n7,n8 = st.columns(8)
-        n1.metric("🔴 Call GEX",        format_number(gex_df['call_gex'].sum()))
-        n2.metric("🟢 Put GEX",         format_number(gex_df['put_gex'].sum()))
-        n3.metric("💹 Net GEX",         format_number(net_gex))
-        n4.metric("📦 Lot / Interval",  f"{lot_size} / ₹{si:.0f}")
-        n5.metric("📈 Total Call OI",   f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
-        n6.metric("📉 Total Put OI",    f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
-        n7.metric("🚧 Call Wall",       f"₹{max_call_oi_strike:,.0f}")
-        n8.metric("🛡️ Put Wall",        f"₹{max_put_oi_strike:,.0f}")
-
     # surface live errors inline (non-blocking)
     if st.session_state.live_error:
-        st.error(f"⚠️ Live spot error: {st.session_state.live_error}", icon="⚡")
+        st.error(f"⚠️ Live spot error: {st.session_state.live_error}",
+                 icon="⚡")
     if st.session_state.chain_error:
         st.warning(f"⚠️ Chain refresh error: {st.session_state.chain_error}")
+
+    # ── metrics rows ──────────────────────────────────────────────────────────
+    ohlc = st.session_state.spot_ohlc or {}
+
+    m1,m2,m3,m4,m5,m6,m7,m8,m9 = st.columns(9)
+    spot_delta_disp = f"{spot_delta:+.1f}" if spot_delta != 0 else None
+    m1.metric("💰 Spot",       f"₹{spot_price:,.0f}", delta=spot_delta_disp)
+    m2.metric("Open",          f"₹{ohlc['open']:,.0f}"  if ohlc else "—")
+    m3.metric("High",          f"₹{ohlc['high']:,.0f}"  if ohlc else "—")
+    m4.metric("Low",           f"₹{ohlc['low']:,.0f}"   if ohlc else "—")
+    m5.metric("Prev",          f"₹{ohlc['close']:,.0f}" if ohlc else "—")
+
+    # ── CALCULATE ATM STRIKE PCR ONLY ──
+    # Isolate the specific options chain contract row closest to active spot price
+    atm_idx = (gex_df["strike"] - spot_price).abs().idxmin()
+    atm_row = gex_df.loc[atm_idx]
+    
+    # Calculate the exact ratio strictly for the At-The-Money strike row
+    atm_idx = (gex_df["strike"] - spot_price).abs().idxmin()
+    atm_row = gex_df.loc[atm_idx]
+    atm_pcr = atm_row["put_oi"] / atm_row["call_oi"] if atm_row["call_oi"] > 0 else 0.00
+    
+    m6.metric("➡️ PCR (ATM)", f"{atm_pcr:.2f}", help="Put/Call OI at ATM strike")
+    
+    m7.metric("🎯 Max Pain",   f"₹{max_pain:,.0f}",
+              delta=f"{max_pain - spot_price:+.0f}")
+    m8.metric("🔄 Gamma Flip", f"₹{gamma_flip:,.0f}",
+              delta=f"{gamma_flip - spot_price:+.0f}")
+    m9.metric("📊 Regime",     "🟢 +GEX" if net_gex>0 else "🔴 -GEX")
+
+    n1,n2,n3,n4,n5,n6,n7,n8 = st.columns(8)
+    n1.metric("🔴 Call GEX",        format_number(gex_df['call_gex'].sum()))
+    n2.metric("🟢 Put GEX",         format_number(gex_df['put_gex'].sum()))
+    n3.metric("💹 Net GEX",         format_number(net_gex))
+    n4.metric("📦 Lot / Interval",  f"{lot_size} / ₹{si:.0f}")
+    n5.metric("📈 Total Call OI",         f"{gamma_levels.get('total_call_oi',0)/1e5:.1f}L")
+    n6.metric("📉 Total Put OI",          f"{gamma_levels.get('total_put_oi',0)/1e5:.1f}L")
+    n7.metric("🚧 Call Wall",       f"₹{max_call_oi_strike:,.0f}")
+    n8.metric("🛡️ Put Wall",        f"₹{max_put_oi_strike:,.0f}")
 
     # ── tabs ──────────────────────────────────────────────────────────────────
     st.markdown("---")
