@@ -129,10 +129,10 @@ def plot_oi_analysis(gex_df, spot_price):
                         vertical_spacing=0.15, row_heights=[0.6, 0.4])
     fig.add_trace(go.Bar(x=gex_df['strike'], y=gex_df['call_oi'], name='Call OI',
                          marker_color='rgba(239,68,68,0.6)',
-                         hovertemplate='<b>Strike:</b> %{x}<br><b>Call OI:</b> %{y:/1e5,.2f}<extra></extra>'), row=1, col=1)
+                         hovertemplate='<b>Strike:</b> %{x}<br><b>Call OI:</b> %{y:,.0f}<extra></extra>'), row=1, col=1)
     fig.add_trace(go.Bar(x=gex_df['strike'], y=gex_df['put_oi'], name='Put OI',
                          marker_color='rgba(34,197,94,0.6)',
-                         hovertemplate='<b>Strike:</b> %{x}<br><b>Put OI:</b> %{y:/1e5,.2f}<extra></extra>'), row=1, col=1)
+                         hovertemplate='<b>Strike:</b> %{x}<br><b>Put OI:</b> %{y:,.0f}<extra></extra>'), row=1, col=1)
     fig.add_trace(go.Bar(x=gex_df['strike'], y=gex_df['call_volume'], name='Call Vol',
                          marker_color='rgba(239,68,68,0.4)', showlegend=False,
                          hovertemplate='<b>Strike:</b> %{x}<br><b>Call Vol:</b> %{y:,.0f}<extra></extra>'), row=2, col=1)
