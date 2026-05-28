@@ -232,8 +232,14 @@ def _live_engine_tick():
   ##incse of error delete from 237 to 251
     if chain_age_s >= chain_ivl:
         try:
-            if kite_mgr:
-                index_df, vix_df = kite_mgr.get_index_and_vix_data(
+            km_chart = st.session_state.kite_manager  # ← GET FROM SESSION
+            if km_chart:
+                try:
+                    new_spot = km_chart.get_spot_ltp(sym)
+                except Exception:
+                    new_spot = st.session_state.spot_price or spot_price
+                
+                index_df, vix_df = km_chart.get_index_and_vix_data(
                     sym, interval="60minute", days_back=22
                 )
                 levels = analyse_levels(index_df, new_spot)
