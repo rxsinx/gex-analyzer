@@ -420,9 +420,7 @@ with st.sidebar:
     st.session_state.lot_size        = lot_size
     st.session_state.strike_interval = strike_interval
     src_lbl = "🔗 Kite" if kite_mgr else "📋 estimate"
-    ca, cb  = st.columns(2)
-    ca.metric("📦 Lot Size",  str(lot_size),              help=src_lbl)
-    cb.metric("📏 Interval",  f"₹{strike_interval:.0f}", help=src_lbl)
+    
 
     # ── Expiry ────────────────────────────────────────────────────────────────
     st.markdown("---")
