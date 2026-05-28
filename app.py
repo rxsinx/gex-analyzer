@@ -441,7 +441,7 @@ with st.sidebar:
     else:
         expiry_type = "monthly"
         expiry_info = {
-            "BANKNIFTY": "📅 BANKNIFTY: Monthly only (no weekly)",
+            "BANKNIFTY": "📅 BANKNIFTY: Monthly only",
             "BANKEX":    "📅 BANKEX: Monthly only",
         }
         if symbol in expiry_info:
