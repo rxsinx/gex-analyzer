@@ -1225,7 +1225,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         }
         vf = {k:v for k,v in fmt.items() if k in disp.columns}
         st.dataframe(disp.style.apply(_hl, axis=1).format(vf),
-                     height=500, use_container_width=True)
+                     height=500, use_container_width=True, hide_index=True)
         ist_now = datetime.now(IST)
         st.download_button(
             "📥 Download CSV", gex_df.to_csv(index=False),
