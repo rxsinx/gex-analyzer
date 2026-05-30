@@ -786,7 +786,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             gamma_levels.get('total_call_oi', 0) / 1e5,
             total_pcr,
             pd.NA,  # <── ADDED: Blanks out Call Premium Total
-            pd.NA   # <── ADDED: Blanks out Put Premium Total
+            pd.NA,   # <── ADDED: Blanks out Put Premium Total
             pd.NA,  # Call Status Total
             pd.NA   # Put Status Total
         ]
