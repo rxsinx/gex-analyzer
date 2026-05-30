@@ -770,7 +770,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "Call OI (L)": (matrix_df["call_oi"] / 1e5).tolist(),
             "PCR": matrix_df["pcr_strike"].tolist(),
             "Call Prem": matrix_df["call_ltp"].tolist(),      # CHANGED:  ltp
-            "Put Prem": matrix_df["put_ltp"].tolist()         # CHANGED:  ltp
+            "Put Prem": matrix_df["put_ltp"].tolist(),         # CHANGED:  ltp
             "Call Status": matrix_df["call_status"].tolist(),  # <── ADDED Row
             "Put Status": matrix_df["put_status"].tolist()     # <── ADDED Row
         }
