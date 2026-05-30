@@ -690,6 +690,11 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     m4.metric("Low",           f"₹{ohlc['low']:,.0f}"   if ohlc else "—")
     m5.metric("Prev",          f"₹{ohlc['close']:,.0f}" if ohlc else "—")
 
+    # Calculate Total PCR to replace <NA>
+    total_put_oi = gamma_levels.get('total_put_oi', 0)
+    total_call_oi = gamma_levels.get('total_call_oi', 0)
+    total_pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0.0
+    
     # ── CALCULATE ATM STRIKE PCR ONLY ──
     # Isolate the specific options chain contract row closest to active spot price
     # atm_idx = (gex_df["strike"] - spot_price).abs().idxmin()
@@ -757,11 +762,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     
         display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
 
-        # Calculate Total PCR to replace <NA>
-        total_put_oi = gamma_levels.get('total_put_oi', 0)
-        total_call_oi = gamma_levels.get('total_call_oi', 0)
-        total_pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0.0
-        
         # 4. Append Total / Net Calculations Column on Right Margin
         display_matrix["TOTAL / NET"] = [
             gex_df['call_gex'].sum() / 1e7,
