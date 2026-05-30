@@ -745,10 +745,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         # 2. Add strike-level PCR safely
         matrix_df['pcr_strike'] = matrix_df.apply(lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1)
         
-        # ── NEW UNIFIED DISPARITY CALCULATION (Put-Call Parity Basis) ──
-        # Negative value = Discount vs Spot | Positive value = Premium vs Spot
-        matrix_df['disparity'] = spot_price - (matrix_df['strike'] - matrix_df['put_ltp'] + matrix_df['call_ltp'])
-        
         # 3. Transpose parameters into rows & scale units to Cr and L
         grid_data = {
             "Strike Price": matrix_df["strike"].tolist(),
@@ -759,12 +755,12 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "Call OI (L)": (matrix_df["call_oi"] / 1e5).tolist(),
             "PCR": matrix_df["pcr_strike"].tolist(),
             "Call Prem": matrix_df["call_ltp"].tolist(),      # CHANGED:  ltp
-            "Put Prem": matrix_df["put_ltp"].tolist(),         # CHANGED:  ltp
-            "Disparity (Pts)": matrix_df["disparity"].tolist()
+            "Put Prem": matrix_df["put_ltp"].tolist()       # CHANGED:  ltp
+            
         }
     
         display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
-        display_matrix.index.name = "📐 Metrics"
+       
         
         # 4. Append Total / Net Calculations Column on Right Margin
         display_matrix["TOTAL / NET"] = [
@@ -776,7 +772,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             total_pcr,
             pd.NA,  # <── ADDED: Blanks out Call Premium Total
             pd.NA,   # <── ADDED: Blanks out Put Premium Total
-            pd.NA   # disparity Total
+            
         ]
         
         # String format converter with suffix markers (Catches pd.NA entries cleanly)
