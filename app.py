@@ -746,7 +746,20 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         matrix_df['pcr_strike'] = matrix_df.apply(
             lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1
         )
-    
+
+        # 1. Sort options chain chronological order
+        matrix_df = gex_df.sort_values(by="strike").copy()
+        matrix_df['strike'] = matrix_df['strike'].astype(int)
+
+        # 2. Add strike-level PCR safely
+        matrix_df['pcr_strike'] = matrix_df.apply(lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1)
+        
+        # ── NEW: Calculate Intrinsic & Extrinsic/Status Values ──
+        # Positive = Time Value/Overvalued, Negative = Discounted
+        matrix_df['call_status'] = matrix_df['call_ltp'] - (spot_price - matrix_df['strike']).clip(lower=0)
+        matrix_df['put_status'] = matrix_df['put_ltp'] - (matrix_df['strike'] - spot_price).clip(lower=0)
+
+        
         # 3. Transpose parameters into rows & scale units to Cr and L
         grid_data = {
             "Strike Price": matrix_df["strike"].tolist(),
@@ -756,8 +769,10 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "Put OI (L)": (matrix_df["put_oi"] / 1e5).tolist(),
             "Call OI (L)": (matrix_df["call_oi"] / 1e5).tolist(),
             "PCR": matrix_df["pcr_strike"].tolist(),
-            "Call Prem": matrix_df["call_ltp"].tolist(),      # CHANGED: theo instead of ltp
-            "Put Prem": matrix_df["put_ltp"].tolist()         # CHANGED: theo instead of ltp
+            "Call Prem": matrix_df["call_ltp"].tolist(),      # CHANGED:  ltp
+            "Put Prem": matrix_df["put_ltp"].tolist()         # CHANGED:  ltp
+            "Call Status": matrix_df["call_status"].tolist(),  # <── ADDED Row
+            "Put Status": matrix_df["put_status"].tolist()     # <── ADDED Row
         }
     
         display_matrix = pd.DataFrame(grid_data).set_index("Strike Price").T
@@ -772,6 +787,8 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             total_pcr,
             pd.NA,  # <── ADDED: Blanks out Call Premium Total
             pd.NA   # <── ADDED: Blanks out Put Premium Total
+            pd.NA,  # Call Status Total
+            pd.NA   # Put Status Total
         ]
         
         # String format converter with suffix markers (Catches pd.NA entries cleanly)
