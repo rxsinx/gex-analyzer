@@ -741,15 +741,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         # 1. Sort options chain chronological order
         matrix_df = gex_df.sort_values(by="strike").copy()
         matrix_df['strike'] = matrix_df['strike'].astype(int)
-    
-        # 2. Add strike-level PCR safely
-        matrix_df['pcr_strike'] = matrix_df.apply(
-            lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1
-        )
-
-        # 1. Sort options chain chronological order
-        matrix_df = gex_df.sort_values(by="strike").copy()
-        matrix_df['strike'] = matrix_df['strike'].astype(int)
 
         # 2. Add strike-level PCR safely
         matrix_df['pcr_strike'] = matrix_df.apply(lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1)
