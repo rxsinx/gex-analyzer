@@ -1593,7 +1593,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             padding: 20px;
             margin-bottom: 20px;
         ">
-            <h4 style="margin-top: 0; color: {regime_info['color']};">📋 What To Do Now:</h4>
+            <h4 style="margin-top: 0; color: white">📋 What To Do Now:</h4>
             <p style="margin: 10px 0; font-size: 16px;"><b>{regime_info['action']}</b></p>
             <hr style="margin: 15px 0; border: none; border-top: 1px solid {regime_info['color']}40;">
             <p style="margin: 8px 0;"><b>Strategy:</b> {regime_info['trade_strategy']}</p>
