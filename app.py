@@ -1656,15 +1656,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 • Consult a certified financial advisor before trading
             """)
         
-        # Footer
-        last_upd = st.session_state.last_update.strftime("%Y-%m-%d %H:%M:%S IST") if st.session_state.last_update else "Unknown"
-        st.markdown(f"""
-<div style="text-align:center;color:#999;font-size:12px;padding:20px;background:#f0f0f0;border-radius:8px;">
-    🔬 <b>GEX Terminal — Put-Call Parity + Market Regime Detection</b><br>
-    ⏰ Last Updated: {last_upd}<br>
-    <span style="color:#c00;">⚠️ Educational Only — Not Financial Advice</span>
-</div>
-        """, unsafe_allow_html=True)
+        
 
     with tab6:
         st.subheader("Options Chain with Greeks")
