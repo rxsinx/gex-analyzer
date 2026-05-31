@@ -325,3 +325,325 @@ def calculate_gex_delta(
         gex_df.loc[i, 'total_dex'] = gex_df.loc[i, 'call_dex'] + gex_df.loc[i, 'put_dex']
     
     return gex_df.sort_values('strike')
+
+# New line added from here for Put Call diparity fuction
+# ═══════════════════════════════════════════════════════════════════════════════
+# PUT-CALL PARITY DIVERGENCE & MARKET REGIME ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def calculate_parity_divergence(gex_df, spot_price):
+    """
+    Calculate put-call parity discount/premium AND divergence for ALL strikes
+    
+    Formulas:
+    - Put Discount = (Spot + Put_LTP) - Strike  → Negative = cheap (BUY)
+    - Call Discount = (Spot - Call_LTP) - Strike → Positive = expensive (SELL)
+    - Divergence = Put_Discount - Call_Discount → Market conviction
+    
+    Args:
+        gex_df: GEX dataframe with strike, put_ltp, call_ltp columns
+        spot_price: Current spot price
+    
+    Returns:
+        DataFrame with all parity metrics and classifications
+    """
+    parity_data = []
+    
+    for _, row in gex_df.iterrows():
+        strike = row['strike']
+        put_ltp = row['put_ltp']
+        call_ltp = row['call_ltp']
+        
+        # ═════════════════════════════════════════════════════════════════════
+        # PARITY CALCULATIONS
+        # ═════════════════════════════════════════════════════════════════════
+        
+        # Put Discount: How much is the put trading below fair value?
+        put_implied_spot = spot_price + put_ltp  # Where spot would be if put is priced fairly
+        put_discount = put_implied_spot - strike  # Negative = cheap, Positive = expensive
+        
+        # Call Discount: How much is the call trading below fair value?
+        call_implied_spot = spot_price - call_ltp  # Where spot would be if call is priced fairly
+        call_discount = call_implied_spot - strike  # Positive = expensive, Negative = cheap
+        
+        # Divergence: How different are put and call pricing?
+        divergence = put_discount - call_discount
+        
+        # ═════════════════════════════════════════════════════════════════════
+        # STRIKE-LEVEL REGIME CLASSIFICATION
+        # ═════════════════════════════════════════════════════════════════════
+        
+        if put_discount < -150 and call_discount < -150:
+            # Both options are significantly underpriced
+            strike_regime = "Both Cheap 🟢"
+            signal_type = "Bullish"
+            
+        elif put_discount > 100 and call_discount > 100:
+            # Both options are significantly overpriced (crisis mode)
+            strike_regime = "Both Expensive 🔴"
+            signal_type = "Crisis"
+            
+        elif put_discount < 0 and call_discount > 0:
+            # Normal: puts cheap, calls expensive (insurance is cheap, speculation expensive)
+            strike_regime = "Normal 🟡"
+            signal_type = "Equilibrium"
+            
+        elif put_discount > 100 and call_discount < -50:
+            # INVERTED: puts expensive, calls cheap (bearish reversal signal!)
+            strike_regime = "Inverted 🔴"
+            signal_type = "Reversal"
+            
+        elif abs(divergence) > 250:
+            # Extreme skew (market showing extreme conviction)
+            if divergence > 0:
+                strike_regime = "Extreme Skew 🟢"
+                signal_type = "Extreme Bullish"
+            else:
+                strike_regime = "Extreme Skew 🔴"
+                signal_type = "Extreme Bearish"
+            
+        else:
+            # In transition between regimes
+            strike_regime = "Transitional ⚪"
+            signal_type = "Neutral"
+        
+        parity_data.append({
+            'strike': strike,
+            'put_discount': round(put_discount, 2),
+            'call_discount': round(call_discount, 2),
+            'divergence': round(divergence, 2),
+            'strike_regime': strike_regime,
+            'signal_type': signal_type,
+        })
+    
+    return pd.DataFrame(parity_data)
+
+
+def detect_market_regime(parity_df, spot_price):
+    """
+    Analyze entire option chain to determine OVERALL market regime
+    
+    This is the key function that tells you what to trade
+    
+    Returns:
+        dict with:
+        - regime: Market regime name with emoji
+        - action: What you should do (buy/sell/wait)
+        - iv_level: Implied volatility environment
+        - avg_put_discount: Average across all strikes
+        - avg_call_discount: Average across all strikes
+        - max_divergence: Largest skew seen
+        - conviction_level: 0-10 strength of signal
+        - color: HTML color for visual display
+        - trade_strategy: Recommended strategy
+    """
+    
+    if parity_df.empty:
+        return {
+            'regime': '⚪ Insufficient Data',
+            'emoji': '⚪',
+            'action': '⏸ No data available',
+            'iv_level': 'Unknown',
+            'avg_put_discount': 0,
+            'avg_call_discount': 0,
+            'max_divergence': 0,
+            'conviction_level': 0,
+            'color': '#6B7280',
+            'trade_strategy': 'Wait for data',
+        }
+    
+    # ═════════════════════════════════════════════════════════════════════════
+    # AGGREGATE STATISTICS (across entire chain)
+    # ═════════════════════════════════════════════════════════════════════════
+    
+    avg_put_disc = parity_df['put_discount'].mean()
+    avg_call_disc = parity_df['call_discount'].mean()
+    max_divergence = parity_df['divergence'].abs().max()
+    
+    # Conviction level: How extreme are the discounts? (0-10 scale)
+    conviction = min(10, max(abs(avg_put_disc), abs(avg_call_disc)) / 50)
+    
+    # ═════════════════════════════════════════════════════════════════════════
+    # REGIME DETECTION LOGIC
+    # ═════════════════════════════════════════════════════════════════════════
+    
+    if avg_put_disc < -150 and avg_call_disc < -150:
+        # BULLISH REGIME: Both cheap, but calls cheaper (strong upside conviction)
+        regime = "🟢 NORMAL BULLISH"
+        action = "✓ Buy Calls / Consider Puts for protection"
+        iv_level = "Low"
+        color = "#22C55E"  # Green
+        trade_strategy = "Bullish Call Spread / Long Call"
+        
+    elif avg_put_disc > 100 and avg_call_disc > 100:
+        # CRISIS REGIME: Everything expensive (extreme hedging)
+        regime = "🔴 CRISIS / HIGH FEAR"
+        action = "✓ Sell Premium (Iron Condor) / Buy protective puts only"
+        iv_level = "Very High"
+        color = "#EF4444"  # Red
+        trade_strategy = "Iron Condor / Credit Spreads / Strangles"
+        
+    elif avg_put_disc < 0 and avg_call_disc > 0:
+        # EQUILIBRIUM REGIME: Puts cheap, calls expensive (normal healthy market)
+        regime = "🟡 EQUILIBRIUM (Normal Market)"
+        action = "✓ Buy Puts ✓ Sell Calls / Risk Reversal"
+        iv_level = "Fair"
+        color = "#FBBF24"  # Amber
+        trade_strategy = "Risk Reversal / Ratio Spreads"
+        
+    elif avg_put_disc > 100 and avg_call_disc < -50:
+        # REVERSAL REGIME: INVERTED! Puts expensive, calls cheap (bearish alert!)
+        regime = "🔴 BEARISH REVERSAL ⚠️"
+        action = "✓ Buy Puts NOW / Short Calls / Reduce Long"
+        iv_level = "High"
+        color = "#DC2626"  # Dark Red
+        trade_strategy = "Bear Put Spread / Protective Put / Short Call"
+        conviction = min(10, conviction + 3)  # Add extra conviction for reversals
+        
+    elif abs(avg_put_disc - avg_call_disc) > 250:
+        # EXTREME SKEW REGIME: Maximum market conviction in one direction
+        if avg_put_disc < avg_call_disc:
+            # Extreme bullish skew (calls way cheaper than puts)
+            regime = "🟢 EXTREME BULLISH SKEW"
+            action = "✓ Buy Calls (breakout trade) / Bull spreads"
+            iv_level = "High"
+            color = "#16A34A"  # Dark Green
+            trade_strategy = "Bull Call Spread / Long Call / Call Ratio"
+        else:
+            # Extreme bearish skew (puts way cheaper than calls)
+            regime = "🔴 EXTREME BEARISH SKEW"
+            action = "✓ Buy Puts (crash hedge) / Bear spreads"
+            iv_level = "High"
+            color = "#7F1D1D"  # Very Dark Red
+            trade_strategy = "Bear Put Spread / Long Put / Put Ratio"
+    else:
+        # TRANSITIONAL REGIME: Market shifting between regimes
+        regime = "⚪ TRANSITIONAL"
+        action = "⏸ Wait for clarity / Monitor for shift"
+        iv_level = "Uncertain"
+        color = "#6B7280"  # Gray
+        trade_strategy = "Hold / Scale in gradually"
+    
+    return {
+        'regime': regime,
+        'emoji': regime.split()[0],
+        'action': action,
+        'iv_level': iv_level,
+        'avg_put_discount': round(avg_put_disc, 2),
+        'avg_call_discount': round(avg_call_disc, 2),
+        'max_divergence': round(max_divergence, 2),
+        'conviction_level': round(conviction, 1),
+        'color': color,
+        'trade_strategy': trade_strategy,
+    }
+
+
+def get_best_call_put_opportunities(parity_df):
+    """
+    Find the BEST opportunities to trade in current market
+    
+    Returns:
+        dict with:
+        - best_put_buy: Strike of most discounted put (best buy signal)
+        - best_call_sell: Strike of most expensive call (best sell signal)
+        
+    This answers: "Which strike should I trade?"
+    """
+    opportunities = {}
+    
+    if not parity_df.empty:
+        # Find the MOST discounted put (best value to buy)
+        best_put_buy_idx = parity_df['put_discount'].idxmin()
+        best_put_buy = parity_df.loc[best_put_buy_idx]
+        opportunities['best_put_buy'] = {
+            'strike': best_put_buy['strike'],
+            'discount': best_put_buy['put_discount'],
+            'divergence': best_put_buy['divergence'],
+        }
+        
+        # Find the MOST expensive call (best premium to sell)
+        best_call_sell_idx = parity_df['call_discount'].idxmax()
+        best_call_sell = parity_df.loc[best_call_sell_idx]
+        opportunities['best_call_sell'] = {
+            'strike': best_call_sell['strike'],
+            'premium': best_call_sell['call_discount'],
+            'divergence': best_call_sell['divergence'],
+        }
+    
+    return opportunities
+
+
+def categorize_divergence_strength(divergence):
+    """
+    Rate how strong the divergence is (market conviction)
+    
+    Returns:
+        dict with strength label, emoji, and conviction score
+    """
+    d_abs = abs(divergence)
+    
+    if d_abs < 50:
+        return {
+            "strength": "Mild",
+            "emoji": "⚪",
+            "conviction": 2,
+            "description": "Small divergence, weak signal"
+        }
+    elif d_abs < 100:
+        return {
+            "strength": "Moderate",
+            "emoji": "🟡",
+            "conviction": 4,
+            "description": "Medium divergence, moderate signal"
+        }
+    elif d_abs < 200:
+        return {
+            "strength": "Strong",
+            "emoji": "🟠",
+            "conviction": 6,
+            "description": "Large divergence, strong signal"
+        }
+    elif d_abs < 300:
+        return {
+            "strength": "Very Strong",
+            "emoji": "🔴",
+            "conviction": 8,
+            "description": "Very large divergence, very strong signal"
+        }
+    else:
+        return {
+            "strength": "Extreme",
+            "emoji": "⚫",
+            "conviction": 10,
+            "description": "Massive divergence, extreme signal"
+        }
+
+
+def format_parity_signal(discount_value, signal_type="put"):
+    """
+    Format a parity value as a trading signal
+    
+    Returns: emoji + description for display
+    """
+    if signal_type == "put":
+        if discount_value < -200:
+            return "🟢🟢 VERY CHEAP", "Extreme BUY signal"
+        elif discount_value < -100:
+            return "🟢 CHEAP", "Strong BUY signal"
+        elif discount_value < 0:
+            return "🟡 Fair", "Slight discount"
+        elif discount_value < 100:
+            return "🟠 EXPENSIVE", "Slight premium"
+        else:
+            return "🔴 VERY EXPENSIVE", "Extreme SELL signal"
+    else:  # call
+        if discount_value > 200:
+            return "🔴🔴 VERY EXPENSIVE", "Extreme SELL signal"
+        elif discount_value > 100:
+            return "🔴 EXPENSIVE", "Strong SELL signal"
+        elif discount_value > 0:
+            return "🟡 Fair", "Slight premium"
+        elif discount_value > -100:
+            return "🟢 CHEAP", "Slight discount"
+        else:
+            return "🟢 VERY CHEAP", "Extreme BUY signal"
