@@ -1143,672 +1143,515 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
  
             st.markdown("---")
  
-            
-
     with tab5:
-    st.subheader("🎯 Intelligent Trade Signals - Put-Call Parity + Market Regime")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 1: IMPORT & CALCULATE PARITY ANALYSIS
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    from modules.gex_calculator import (
-        calculate_parity_divergence,
-        detect_market_regime,
-        get_best_call_put_opportunities,
-        categorize_divergence_strength,
-        format_parity_signal,
-    )
-    
-    # Calculate parity analysis for entire chain
-    parity_df = calculate_parity_divergence(gex_df, spot_price)
-    regime_info = detect_market_regime(parity_df, spot_price)
-    opportunities = get_best_call_put_opportunities(parity_df)
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 2: MARKET REGIME BANNER (TOP)
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    regime_html = f"""
-    <div style="
-        background: linear-gradient(135deg, {regime_info['color']}, {regime_info['color']}40);
-        border: 3px solid {regime_info['color']};
-        border-radius: 12px;
-        padding: 25px;
-        margin-bottom: 25px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    ">
-        <h2 style="margin: 0 0 10px 0; color: white; font-size: 28px; font-weight: bold;">
-            {regime_info['regime']}
-        </h2>
-        <p style="margin: 5px 0; color: white; font-size: 16px; line-height: 1.6;">
-            <b>📊 Market:</b> {regime_info['iv_level']} IV | 
-            <b>💪 Conviction:</b> {regime_info['conviction_level']}/10 | 
-            <b>🎯 Strategy:</b> {regime_info['trade_strategy']}
-        </p>
-        <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">
-            <b>👉 Recommended:</b> {regime_info['action']}
-        </p>
-    </div>
-    """
-    st.markdown(regime_html, unsafe_allow_html=True)
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 3: KEY METRICS BAR (5 COLUMNS)
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### 📊 Market Metrics")
-    
-    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-    
-    with col_m1:
-        st.metric(
-            "💰 Spot Price",
-            f"₹{spot_price:,.0f}",
-            help="Current index level"
-        )
-    
-    with col_m2:
-        put_emoji = "🟢" if regime_info['avg_put_discount'] < 0 else "🔴"
-        st.metric(
-            f"{put_emoji} Avg Put Disc",
-            f"₹{regime_info['avg_put_discount']:.0f}",
-            help="Negative = puts cheap (buy signal) | Positive = puts expensive (sell signal)"
-        )
-    
-    with col_m3:
-        call_emoji = "🔴" if regime_info['avg_call_discount'] > 0 else "🟢"
-        st.metric(
-            f"{call_emoji} Avg Call Disc",
-            f"₹{regime_info['avg_call_discount']:.0f}",
-            help="Positive = calls expensive (sell signal) | Negative = calls cheap (buy signal)"
-        )
-    
-    with col_m4:
-        skew_cat = categorize_divergence_strength(regime_info['max_divergence'])
-        st.metric(
-            f"📈 Max Divergence {skew_cat['emoji']}",
-            f"₹{regime_info['max_divergence']:.0f}",
-            help=f"{skew_cat['description']} | Divergence = conviction level"
-        )
-    
-    with col_m5:
-        conviction_emoji = "🔥" if regime_info['conviction_level'] >= 8 else "⚡" if regime_info['conviction_level'] >= 5 else "⚪"
-        st.metric(
-            f"⚡ Conviction {conviction_emoji}",
-            f"{regime_info['conviction_level']}/10",
-            help="Higher = Stronger signal | >8 = High conviction trade"
-        )
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 4: PRIMARY TRADING SIGNALS (SIDE BY SIDE)
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### 📋 PRIMARY SIGNALS - What To Trade Right Now")
-    
-    col_sig_1, col_sig_2 = st.columns(2)
-    
-    # SIGNAL 1: Best Put to BUY
-    if 'best_put_buy' in opportunities:
-        best_put = opportunities['best_put_buy']
-        put_discount_cat = categorize_divergence_strength(best_put['discount'])
+        st.subheader("🎯 Intelligent Trade Signals - Put-Call Parity + Market Regime")
         
-        # Determine colors based on discount magnitude
-        if best_put['discount'] < -200:
-            put_signal_color = "#16A34A"  # Dark green - EXTREME BUY
-            put_emoji_strong = "🟢🟢"
-        elif best_put['discount'] < -100:
-            put_signal_color = "#22C55E"  # Green - STRONG BUY
-            put_emoji_strong = "🟢"
-        elif best_put['discount'] < 0:
-            put_signal_color = "#86EFAC"  # Light green - MILD BUY
-            put_emoji_strong = "🟡"
-        else:
-            put_signal_color = "#FBBF24"  # Amber - SELL
-            put_emoji_strong = "🟠"
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 1: MARKET REGIME OVERVIEW
+        # ═══════════════════════════════════════════════════════════════════════════
         
-        with col_sig_1:
-            put_signal_html = f"""
-            <div style="
-                background: linear-gradient(135deg, {put_signal_color}20, {put_signal_color}05);
-                border: 2px solid {put_signal_color};
-                border-radius: 12px;
-                padding: 20px;
-                min-height: 220px;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-            ">
-                <div>
-                    <h4 style="margin: 0 0 10px 0; color: {put_signal_color}; font-size: 18px; font-weight: bold;">
-                        {put_emoji_strong} BUY PUT SIGNAL {put_discount_cat['emoji']}
+        from modules.gex_calculator import (
+            calculate_parity_divergence,
+            detect_market_regime,
+            get_best_call_put_opportunities,
+            categorize_divergence_strength,
+        )
+        
+        # Calculate parity analysis for entire chain
+        parity_df = calculate_parity_divergence(gex_df, spot_price)
+        regime_info = detect_market_regime(parity_df, spot_price)
+        opportunities = get_best_call_put_opportunities(parity_df)
+        
+        # Display regime prominently (with background color)
+        regime_html = f"""
+        <div style="
+            background: linear-gradient(135deg, {regime_info['color']}, {regime_info['color']}40);
+            border: 2px solid {regime_info['color']};
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        ">
+            <h2 style="margin: 0; color: white; font-size: 24px;">
+                {regime_info['regime']}
+            </h2>
+            <p style="margin: 10px 0 0 0; color: white; font-size: 14px;">
+                <b>Market Regime:</b> {regime_info['iv_level']} IV | 
+                <b>Conviction:</b> {regime_info['conviction_level']}/10 | 
+                <b>Strategy:</b> {regime_info['trade_strategy']}
+            </p>
+        </div>
+        """
+        st.markdown(regime_html, unsafe_allow_html=True)
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 2: KEY METRICS - Spot + Discounts + Divergence
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        col_metric_1, col_metric_2, col_metric_3, col_metric_4, col_metric_5 = st.columns(5)
+        
+        with col_metric_1:
+            st.metric(
+                "💰 Spot",
+                f"₹{spot_price:,.0f}",
+                help="Current index price"
+            )
+        
+        with col_metric_2:
+            st.metric(
+                "🟢 Avg Put Discount",
+                f"₹{regime_info['avg_put_discount']:.0f}",
+                help="Negative = puts are cheap (buy signal)"
+            )
+        
+        with col_metric_3:
+            st.metric(
+                "🔴 Avg Call Discount",
+                f"₹{regime_info['avg_call_discount']:.0f}",
+                help="Positive = calls are expensive (sell signal)"
+            )
+        
+        with col_metric_4:
+            skew_cat = categorize_divergence_strength(regime_info['max_divergence'])
+            st.metric(
+                f"📊 Max Skew {skew_cat['emoji']}",
+                f"₹{regime_info['max_divergence']:.0f}",
+                help=f"{skew_cat['strength']} divergence - {skew_cat['conviction']}/10 conviction"
+            )
+        
+        with col_metric_5:
+            st.metric(
+                "⚡ Conviction",
+                f"{regime_info['conviction_level']}/10",
+                help="How strong is this signal?"
+            )
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 3: PRIMARY TRADING SIGNALS
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        st.markdown("### 📋 PRIMARY SIGNALS - What To Trade")
+        
+        # Create signal cards
+        col_sig_1, col_sig_2 = st.columns(2)
+        
+        # SIGNAL 1: Put Strategy
+        if 'best_put_buy' in opportunities:
+            best_put = opportunities['best_put_buy']
+            put_discount_cat = categorize_divergence_strength(best_put['discount'])
+            
+            with col_sig_1:
+                signal_color = "#22C55E" if best_put['discount'] < -100 else "#FBBF24"
+                put_signal = f"""
+                <div style="
+                    background: {signal_color}20;
+                    border: 2px solid {signal_color};
+                    border-radius: 8px;
+                    padding: 15px;
+                ">
+                    <h4 style="margin: 0 0 10px 0; color: {signal_color};">
+                        🟢 BUY PUT SIGNAL {put_discount_cat['emoji']}
                     </h4>
-                    <p style="margin: 8px 0; font-size: 16px; font-weight: bold;">
-                        <b>Strike:</b> <span style="color: {put_signal_color}; font-size: 18px;">₹{best_put['strike']:,.0f}</span>
-                    </p>
-                    <p style="margin: 8px 0; font-size: 15px;">
-                        <b>Discount:</b> <span style="color: {put_signal_color}; font-weight: bold;">₹{best_put['discount']:.0f}</span> 
-                        <span style="font-size: 13px;">({put_discount_cat['strength']})</span>
-                    </p>
-                    <p style="margin: 8px 0; font-size: 14px; color: #666;">
-                        Put is trading <b>₹{abs(best_put['discount']):.0f} {('below' if best_put['discount'] < 0 else 'above')} fair value</b>
-                    </p>
-                </div>
-                <div style="background: {put_signal_color}10; padding: 10px; border-radius: 8px; margin-top: 10px;">
-                    <p style="margin: 0; font-size: 13px; color: #666;">
-                        <b>Action:</b> Protective put or downside hedge<br/>
+                    <p style="margin: 5px 0;"><b>Strike:</b> ₹{best_put['strike']:,.0f}</p>
+                    <p style="margin: 5px 0;"><b>Discount:</b> ₹{best_put['discount']:.0f} ({put_discount_cat['strength']})</p>
+                    <p style="margin: 5px 0;"><b>Why:</b> Put is trading {abs(best_put['discount']):.0f} below fair value</p>
+                    <p style="margin: 5px 0; color: #666;">
+                        <b>Action:</b> Protective put or downside hedge | 
                         <b>Risk:</b> Direction stays up
                     </p>
                 </div>
-            </div>
-            """
-            st.markdown(put_signal_html, unsafe_allow_html=True)
-    
-    # SIGNAL 2: Best Call to SELL or BUY
-    if 'best_call_sell' in opportunities:
-        best_call = opportunities['best_call_sell']
-        call_premium_cat = categorize_divergence_strength(abs(best_call['premium']))
+                """
+                st.markdown(put_signal, unsafe_allow_html=True)
         
-        # Determine colors based on premium magnitude
-        if best_call['premium'] > 200:
-            call_signal_color = "#DC2626"  # Dark red - EXTREME SELL
-            call_emoji_strong = "🔴🔴"
-            call_action = "SELL CALL"
-        elif best_call['premium'] > 100:
-            call_signal_color = "#EF4444"  # Red - STRONG SELL
-            call_emoji_strong = "🔴"
-            call_action = "SELL CALL"
-        elif best_call['premium'] > 0:
-            call_signal_color = "#FCA5A5"  # Light red - MILD SELL
-            call_emoji_strong = "🟠"
-            call_action = "SELL CALL"
-        elif best_call['premium'] > -100:
-            call_signal_color = "#86EFAC"  # Light green - MILD BUY
-            call_emoji_strong = "🟡"
-            call_action = "BUY CALL"
-        else:
-            call_signal_color = "#22C55E"  # Green - STRONG BUY
-            call_emoji_strong = "🟢"
-            call_action = "BUY CALL"
-        
-        with col_sig_2:
-            call_signal_html = f"""
-            <div style="
-                background: linear-gradient(135deg, {call_signal_color}20, {call_signal_color}05);
-                border: 2px solid {call_signal_color};
-                border-radius: 12px;
-                padding: 20px;
-                min-height: 220px;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-            ">
-                <div>
-                    <h4 style="margin: 0 0 10px 0; color: {call_signal_color}; font-size: 18px; font-weight: bold;">
-                        {call_emoji_strong} {call_action} SIGNAL {call_premium_cat['emoji']}
+        # SIGNAL 2: Call Strategy
+        if 'best_call_sell' in opportunities:
+            best_call = opportunities['best_call_sell']
+            call_premium_cat = categorize_divergence_strength(abs(best_call['premium']))
+            
+            with col_sig_2:
+                if best_call['premium'] > 0:
+                    signal_color = "#EF4444"
+                    signal_type = "SELL CALL"
+                    emoji = "🔴"
+                else:
+                    signal_color = "#FBBF24"
+                    signal_type = "BUY CALL"
+                    emoji = "🟡"
+                
+                call_signal = f"""
+                <div style="
+                    background: {signal_color}20;
+                    border: 2px solid {signal_color};
+                    border-radius: 8px;
+                    padding: 15px;
+                ">
+                    <h4 style="margin: 0 0 10px 0; color: {signal_color};">
+                        {emoji} {signal_type} SIGNAL {call_premium_cat['emoji']}
                     </h4>
-                    <p style="margin: 8px 0; font-size: 16px; font-weight: bold;">
-                        <b>Strike:</b> <span style="color: {call_signal_color}; font-size: 18px;">₹{best_call['strike']:,.0f}</span>
-                    </p>
-                    <p style="margin: 8px 0; font-size: 15px;">
-                        <b>Premium:</b> <span style="color: {call_signal_color}; font-weight: bold;">₹{best_call['premium']:.0f}</span> 
-                        <span style="font-size: 13px;">({call_premium_cat['strength']})</span>
-                    </p>
-                    <p style="margin: 8px 0; font-size: 14px; color: #666;">
-                        Call is trading <b>₹{abs(best_call['premium']):.0f} {('above' if best_call['premium'] > 0 else 'below')} fair value</b>
-                    </p>
-                </div>
-                <div style="background: {call_signal_color}10; padding: 10px; border-radius: 8px; margin-top: 10px;">
-                    <p style="margin: 0; font-size: 13px; color: #666;">
-                        <b>Action:</b> {'Sell call premium / Income strategy' if best_call['premium'] > 0 else 'Buy call / Bullish play'}<br/>
+                    <p style="margin: 5px 0;"><b>Strike:</b> ₹{best_call['strike']:,.0f}</p>
+                    <p style="margin: 5px 0;"><b>Premium:</b> ₹{best_call['premium']:.0f} ({call_premium_cat['strength']})</p>
+                    <p style="margin: 5px 0;"><b>Why:</b> Call is trading {abs(best_call['premium']):.0f} {'above' if best_call['premium'] > 0 else 'below'} fair value</p>
+                    <p style="margin: 5px 0; color: #666;">
+                        <b>Action:</b> {'Sell call premium / Income strategy' if best_call['premium'] > 0 else 'Buy call / Bullish play'} | 
                         <b>Risk:</b> {'Capped upside' if best_call['premium'] > 0 else 'Direction down'}
                     </p>
                 </div>
-            </div>
-            """
-            st.markdown(call_signal_html, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 5: DETAILED REGIME INTERPRETATION
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### 📊 DETAILED MARKET REGIME ANALYSIS")
-    
-    with st.expander("🔍 What Does This Regime Mean? (Click to Expand)", expanded=True):
+                """
+                st.markdown(call_signal, unsafe_allow_html=True)
         
-        if "BULLISH" in regime_info['regime'] and "REVERSAL" not in regime_info['regime']:
-            interpretation = f"""
-            ## 🟢 Normal Bullish Regime
-            
-            **Current State:** Calls and puts are both discounted, but calls are MORE discounted
-            
-            **Market Interpretation:**
-            - Traders are buying calls aggressively, pushing call prices DOWN
-            - Nobody wants puts, so they're also cheap
-            - Market has strong upside conviction
-            
-            **What This Means for You:**
-            - Bullish move is likely (traders betting up)
-            - Downside protection is cheap (good for hedging)
-            - Calls offer better value than puts
-            
-            **Best Strategy:**
-            ✓ **Buy Calls** - They're cheap and direction is bullish
-            ✓ **Use Puts for Protection** - Cheap hedge for long calls
-            ✓ **Bull Call Spread** - Limited risk, defined reward
-            ✗ Avoid selling calls (missing upside)
-            ✗ Avoid directional hedges (conflict with market)
-            
-            **Conviction Level:** {regime_info['conviction_level']}/10
-            **Recommended Trade:** {regime_info['trade_strategy']}
-            """
+        st.markdown("---")
         
-        elif "CRISIS" in regime_info['regime']:
-            interpretation = f"""
-            ## 🔴 Crisis / High Fear Regime
-            
-            **Current State:** Everything is expensive - both puts AND calls
-            
-            **Market Interpretation:**
-            - Traders buying puts for protection (fear buying)
-            - Sellers pulling back (refusing to sell)
-            - Extreme uncertainty about direction
-            
-            **What This Means for You:**
-            - Volatility will compress eventually (revert to mean)
-            - This is the WORST time to buy options (all expensive)
-            - This is the BEST time to sell options (collect premium)
-            
-            **Best Strategy:**
-            ✓ **Sell Premium** - Iron Condor, Strangles, Credit Spreads
-            ✓ **Use This to Exit Long Positions** - Sell into strength
-            ✓ **Collect Premium** - Volatility crush incoming
-            ✗ Avoid buying calls (expensive)
-            ✗ Avoid buying puts (expensive)
-            ✗ Avoid directional trades (no edge)
-            
-            **Conviction Level:** {regime_info['conviction_level']}/10
-            **Recommended Trade:** {regime_info['trade_strategy']}
-            """
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 4: DETAILED REGIME INTERPRETATION
+        # ═══════════════════════════════════════════════════════════════════════════
         
-        elif "EQUILIBRIUM" in regime_info['regime']:
-            interpretation = f"""
-            ## 🟡 Equilibrium / Normal Market Regime
-            
-            **Current State:** Puts are cheap, calls are expensive (NORMAL!)
-            
-            **Market Interpretation:**
-            - Puts = insurance (protective), so they're discounted (no one wants to buy insurance in normal times)
-            - Calls = speculation (aggressive), so they're premium (everyone wants upside)
-            - Market is finding natural balance
-            
-            **What This Means for You:**
-            - This is the MOST profitable regime for most traders
-            - Clear strategy: buy puts cheap, sell calls expensive
-            - Risk/reward is balanced and fair
-            
-            **Best Strategy:**
-            ✓ **Buy Puts** - They're cheap protection
-            ✓ **Sell Calls** - They're expensive speculation
-            ✓ **Risk Reversal** - Long Put + Short Call (zero cost or credit)
-            ✓ **Ratio Spreads** - Selling more than buying
-            ✗ Avoid buying calls (overpriced)
-            ✗ Avoid selling puts (undercompensated)
-            
-            **Conviction Level:** {regime_info['conviction_level']}/10
-            **Recommended Trade:** {regime_info['trade_strategy']}
-            """
+        st.markdown("### 📊 DETAILED MARKET REGIME ANALYSIS")
         
-        elif "REVERSAL" in regime_info['regime']:
-            interpretation = f"""
-            ## 🔴 BEARISH REVERSAL ALERT ⚠️ (HIGH CONVICTION!)
+        with st.expander("🔍 What Does This Regime Mean? (Click to Expand)", expanded=True):
             
-            **Current State:** INVERTED! Puts are expensive, calls are cheap (ABNORMAL!)
+            # Regime-specific interpretation
+            if "BULLISH" in regime_info['regime']:
+                st.markdown(f"""
+                #### 🟢 Normal Bullish Regime
+                
+                **Current State:** Calls and puts are both discounted, but calls are MORE discounted
+                
+                **Market Interpretation:**
+                - Traders are buying calls aggressively → pushing prices DOWN
+                - Nobody wants puts → also cheap
+                - Market has strong upside conviction
+                
+                **What This Means for You:**
+                - Bullish move is likely (traders betting up)
+                - Downside protection is cheap (good for hedging)
+                - Calls offer better value than puts
+                
+                **Best Strategy:** 
+                ✓ Buy calls (they're cheap + direction is bullish)
+                ✓ Use puts for protection only (no profit expectation)
+                ✗ Avoid selling calls (missing upside)
+                ✗ Avoid directional hedges (conflict with market)
+                
+                **Conviction:** {regime_info['conviction_level']}/10 ({regime_info['trade_strategy']})
+                """)
             
-            **Market Interpretation:**
-            - EXTREME ALERT: Market expects a DOWNSIDE move
-            - Traders PAYING UP for puts (fear premium)
-            - Traders NOT buying calls (no conviction up)
-            - This is the FLIP point in sentiment
+            elif "CRISIS" in regime_info['regime']:
+                st.markdown(f"""
+                #### 🔴 Crisis / High Fear Regime
+                
+                **Current State:** Everything is expensive - both puts AND calls
+                
+                **Market Interpretation:**
+                - Traders buying puts for protection (fear buying)
+                - Sellers pulling back (refusing to sell)
+                - Extreme uncertainty about direction
+                
+                **What This Means for You:**
+                - Volatility will compress eventually (revert)
+                - This is the WORST time to buy options
+                - This is the BEST time to sell options
+                
+                **Best Strategy:**
+                ✓ Sell premium (iron condor, strangles, credit spreads)
+                ✓ Use this to exit long positions
+                ✗ Avoid buying calls or puts
+                ✗ Avoid directional trades (no edge)
+                
+                **Conviction:** {regime_info['conviction_level']}/10 ({regime_info['trade_strategy']})
+                """)
             
-            **What This Means for You:**
-            - Market is preparing for a CRASH
-            - This regime = HIGHEST conviction bearish signal
-            - Time to reduce long exposure immediately
-            - Downside move likely within days
+            elif "EQUILIBRIUM" in regime_info['regime']:
+                st.markdown(f"""
+                #### 🟡 Equilibrium / Normal Market Regime
+                
+                **Current State:** Puts are cheap, calls are expensive (NORMAL!)
+                
+                **Market Interpretation:**
+                - Puts = insurance, so they're discounted (no one values insurance)
+                - Calls = speculation, so they're premium (everyone wants upside)
+                - Market is finding natural balance
+                
+                **What This Means for You:**
+                - This is the MOST profitable regime for traders
+                - Clear strategy: buy puts, sell calls
+                - Risk/reward is balanced
+                
+                **Best Strategy:**
+                ✓ Buy puts (cheap protection)
+                ✓ Sell calls (expensive premium)
+                ✓ Risk Reversal: Long Put + Short Call (zero cost or credit)
+                ✗ Avoid buying calls (overpriced)
+                
+                **Conviction:** {regime_info['conviction_level']}/10 ({regime_info['trade_strategy']})
+                """)
             
-            **Best Strategy:**
-            ✓ **BUY PUTS** - YES, despite premium (signal is TOO strong)
-            ✓ **SHORT CALLS** - Earn on downside + take premium
-            ✓ **Reduce Longs** - Exit bullish positions
-            ✓ **Protective Puts** - Guard existing positions
-            ✗ Avoid buying calls (catching falling knife)
-            ✗ Avoid holding longs naked (crash likely)
-            ✗ Avoid selling puts (wrong side of bet)
+            elif "REVERSAL" in regime_info['regime']:
+                st.markdown(f"""
+                #### 🔴 BEARISH REVERSAL ALERT ⚠️
+                
+                **Current State:** INVERTED! Puts are expensive, calls are cheap
+                
+                **Market Interpretation:**
+                - EXTREME ALERT: Market expects a downside move
+                - Traders paying UP for puts (fear premium)
+                - Traders NOT buying calls (no conviction up)
+                - This is the FLIP point in sentiment
+                
+                **What This Means for You:**
+                - Market is preparing for a CRASH
+                - This regime = HIGH conviction bearish signal
+                - Time to reduce long exposure
+                
+                **Best Strategy:**
+                ✓ BUY PUTS (yes, despite premium - signal is too strong)
+                ✓ SHORT CALLS (earn on downside + take premium)
+                ✓ Reduce long equity exposure
+                ✗ Avoid buying calls (catching falling knife)
+                ✗ Avoid holding longs naked (crash likely)
+                
+                **Conviction:** {regime_info['conviction_level']}/10 ({regime_info['trade_strategy']})
+                🚨 **THIS IS A HIGH-CONVICTION REVERSAL SIGNAL** 🚨
+                """)
             
-            **Conviction Level:** {regime_info['conviction_level']}/10 (MAXIMUM ALERT)
-            **Recommended Trade:** {regime_info['trade_strategy']}
+            elif "EXTREME" in regime_info['regime']:
+                st.markdown(f"""
+                #### ⚫ EXTREME SKEW REGIME
+                
+                **Current State:** Maximum divergence - extremely bullish OR extremely bearish
+                
+                **Market Interpretation:**
+                - Market is showing EXTREME conviction in one direction
+                - Skew divergence > 250 points = highest confidence
+                - This is rare and indicates breakout imminent
+                
+                **What This Means for You:**
+                - Prepare for significant move in the skewed direction
+                - This is a HIGH-CONVICTION opportunity
+                - Premium is justified by the expected move
+                
+                **Best Strategy:**
+                ✓ Trade WITH the skew (don't fight it)
+                ✓ For extreme bullish: Buy calls despite expense
+                ✓ For extreme bearish: Buy puts despite expense
+                ✓ These are the highest-conviction trades available
+                
+                **Conviction:** {regime_info['conviction_level']}/10 ({regime_info['trade_strategy']})
+                """)
             
-            🚨 **THIS IS A HIGH-CONVICTION REVERSAL SIGNAL** 🚨
-            """
+            else:
+                st.markdown(f"""
+                #### ⚪ Transitional Regime
+                
+                **Current State:** Market is shifting between regimes
+                
+                **Market Interpretation:**
+                - Sentiment is changing
+                - Traders are re-positioning
+                - Less clarity on direction
+                
+                **What This Means for You:**
+                - Wait for clarity before making big trades
+                - Watch for regime completion (shift to a clear regime)
+                - Scale in gradually if you want exposure
+                
+                **Best Strategy:**
+                ⏸ Monitor and wait for shift
+                ✓ Small positions only
+                ✓ Scale in as regime becomes clear
+                
+                **Conviction:** {regime_info['conviction_level']}/10
+                """)
         
-        elif "EXTREME" in regime_info['regime']:
-            interpretation = f"""
-            ## ⚫ EXTREME SKEW REGIME
-            
-            **Current State:** Maximum divergence (>250 points) - EXTREME conviction in one direction
-            
-            **Market Interpretation:**
-            - Market is showing EXTREME conviction in one direction
-            - Largest divergence seen = highest confidence signal
-            - This is RARE and indicates breakout imminent
-            - Only happens on major technical levels
-            
-            **What This Means for You:**
-            - Prepare for significant move in the skewed direction
-            - This is a HIGH-CONVICTION opportunity
-            - Premium is justified by the expected move
-            - Breakout is imminent
-            
-            **Best Strategy:**
-            ✓ **Trade WITH the Skew** - Don't fight the market
-            ✓ **For Bullish Skew:** Buy calls despite expensive
-            ✓ **For Bearish Skew:** Buy puts despite expensive
-            ✓ **All-in Signal:** These are highest conviction available
-            ✗ Avoid selling into the skew (wrong side)
-            ✗ Avoid hedges (signal too strong)
-            
-            **Conviction Level:** {regime_info['conviction_level']}/10 (MAXIMUM)
-            **Recommended Trade:** {regime_info['trade_strategy']}
-            """
+        st.markdown("---")
         
-        else:
-            interpretation = f"""
-            ## ⚪ Transitional Regime
-            
-            **Current State:** Market is shifting between regimes
-            
-            **Market Interpretation:**
-            - Sentiment is changing
-            - Traders are re-positioning
-            - Less clarity on direction
-            
-            **What This Means for You:**
-            - Wait for clarity before making big trades
-            - Watch for regime completion
-            - Monitor which way sentiment shifts
-            
-            **Best Strategy:**
-            ⏸ **Monitor and Wait** - Clarity coming
-            ✓ **Small Positions Only** - Scale in gradually
-            ✓ **Scale In as Regime Becomes Clear** - Watch for next signal
-            
-            **Conviction Level:** {regime_info['conviction_level']}/10
-            """
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 5: STRIKE-BY-STRIKE PARITY MATRIX (Detailed View)
+        # ═══════════════════════════════════════════════════════════════════════════
         
-        st.markdown(interpretation)
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 6: STRIKE-BY-STRIKE PARITY MATRIX
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### 🔬 Strike-by-Strike Parity Breakdown")
-    
-    # Create detailed parity table
-    parity_display = parity_df[['strike', 'put_discount', 'call_discount', 'divergence', 'strike_regime']].copy()
-    parity_display.columns = ['Strike', 'Put Disc', 'Call Disc', 'Divergence', 'Regime']
-    parity_display = parity_display.sort_values('Strike').reset_index(drop=True)
-    
-    # Create display version
-    parity_fmt = parity_display.copy()
-    parity_fmt['Strike'] = parity_fmt['Strike'].apply(lambda x: f"₹{x:,.0f}")
-    parity_fmt['Put Disc'] = parity_fmt['Put Disc'].apply(lambda x: f"{x:+.0f}")
-    parity_fmt['Call Disc'] = parity_fmt['Call Disc'].apply(lambda x: f"{x:+.0f}")
-    parity_fmt['Divergence'] = parity_fmt['Divergence'].apply(lambda x: f"{x:+.0f}")
-    
-    # Display with custom styling
-    st.dataframe(
-        parity_fmt,
-        use_container_width=True,
-        height=400,
-        column_config={
-            "Strike": st.column_config.TextColumn("Strike", width="medium"),
-            "Put Disc": st.column_config.TextColumn("Put Disc", width="medium"),
-            "Call Disc": st.column_config.TextColumn("Call Disc", width="medium"),
-            "Divergence": st.column_config.TextColumn("Divergence", width="medium"),
-            "Regime": st.column_config.TextColumn("Regime", width="large"),
-        }
-    )
-    
-    st.markdown("""
-    **How to Read This Table:**
-    
-    - **Put Disc (Negative = Green Zone):** 
-      - More negative = Put is cheaper (better to BUY)
-      - Less negative / positive = Put is expensive (avoid or SELL)
-    
-    - **Call Disc (Positive = Red Zone):**
-      - More positive = Call is expensive (better to SELL)
-      - Less positive / negative = Call is cheap (okay to BUY)
-    
-    - **Divergence (Shows Skew):**
-      - Larger divergence = Stronger market conviction
-      - Positive = Bullish (calls cheaper than puts)
-      - Negative = Bearish (puts cheaper than calls)
-    
-    - **Regime:**
-      - 🟢 Both Cheap = Bullish (buy)
-      - 🔴 Both Expensive = Crisis (sell premium)
-      - 🟡 Normal = Equilibrium (buy puts, sell calls)
-      - 🔴 Inverted = Bearish Reversal (buy puts, short calls)
-    """)
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 7: PCR AND GREEK CONTEXT
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### 📈 Supporting Metrics - PCR & Greeks Context")
-    
-    col_pcr_1, col_pcr_2, col_pcr_3, col_pcr_4 = st.columns(4)
-    
-    with col_pcr_1:
-        total_pcr = gamma_levels.get('pcr', 1.0)
-        pcr_color = "🔴" if total_pcr < 0.8 else "🟡" if total_pcr < 1.2 else "🟢"
-        st.metric(
-            f"{pcr_color} Total PCR",
-            f"{total_pcr:.2f}",
-            help="Put/Call OI ratio across entire chain. <0.8=Bullish, >1.2=Bearish"
+        st.markdown("### 🔬 Strike-by-Strike Parity Breakdown")
+        
+        # Create detailed parity table
+        parity_display = parity_df[['strike', 'put_discount', 'call_discount', 'divergence', 'strike_regime']].copy()
+        parity_display.columns = ['Strike', 'Put Disc', 'Call Disc', 'Divergence', 'Regime']
+        parity_display = parity_display.sort_values('Strike')
+        
+        # Format
+        parity_fmt = parity_display.copy()
+        parity_fmt['Strike'] = parity_fmt['Strike'].apply(lambda x: f"₹{x:,.0f}")
+        parity_fmt['Put Disc'] = parity_fmt['Put Disc'].apply(lambda x: f"{x:+.0f}")
+        parity_fmt['Call Disc'] = parity_fmt['Call Disc'].apply(lambda x: f"{x:+.0f}")
+        parity_fmt['Divergence'] = parity_fmt['Divergence'].apply(lambda x: f"{x:+.0f}")
+        
+        # Style function
+        def style_parity_detail(row_index, row_values):
+            styles = {}
+            put_disc = parity_display.iloc[row_index]['Put Disc']
+            call_disc = parity_display.iloc[row_index]['Call Disc']
+            divergence = parity_display.iloc[row_index]['Divergence']
+            
+            # Color put discount
+            if put_disc < -200:
+                styles['Put Disc'] = 'background-color: #22C55E; color: white; font-weight: bold;'
+            elif put_disc < -100:
+                styles['Put Disc'] = 'background-color: #86EFAC; color: black;'
+            elif put_disc < 0:
+                styles['Put Disc'] = 'background-color: #D1FAE5; color: black;'
+            
+            if put_disc > 100:
+                styles['Put Disc'] = 'background-color: #EF4444; color: white; font-weight: bold;'
+            
+            # Color call discount
+            if call_disc > 100:
+                styles['Call Disc'] = 'background-color: #EF4444; color: white; font-weight: bold;'
+            elif call_disc > 0:
+                styles['Call Disc'] = 'background-color: #FCA5A5; color: black;'
+            elif call_disc < -150:
+                styles['Call Disc'] = 'background-color: #22C55E; color: white; font-weight: bold;'
+            
+            # Highlight large divergences
+            if abs(divergence) > 250:
+                styles['Divergence'] = 'background-color: #9333EA; color: white; font-weight: bold;'
+            elif abs(divergence) > 150:
+                styles['Divergence'] = 'background-color: #A78BFA; color: white;'
+            
+            return pd.Series(styles)
+        
+        # Display with styling
+        styled_parity = parity_fmt.style.apply(
+            lambda row: style_parity_detail(row.name, row.values),
+            axis=1
         )
-    
-    with col_pcr_2:
-        max_pain = gamma_levels.get('max_pain', spot_price)
-        delta = max_pain - spot_price
-        st.metric(
-            "🎯 Max Pain",
-            f"₹{max_pain:,.0f}",
-            delta=f"{delta:+.0f}",
-            help="Where max profits expire worthless"
-        )
-    
-    with col_pcr_3:
-        net_gex = gamma_levels.get('total_gex', 0)
-        regime_gex = "Stable ✓" if net_gex > 0 else "Volatile !"
-        gex_emoji = "🟢" if net_gex > 0 else "🔴"
-        st.metric(
-            f"{gex_emoji} Net GEX Regime",
-            regime_gex,
-            help="Positive = Stable / Negative = Volatile"
-        )
-    
-    with col_pcr_4:
-        gamma_flip = gamma_levels.get('gamma_flip', spot_price)
-        flip_delta = gamma_flip - spot_price
-        st.metric(
-            "🔄 Gamma Flip",
-            f"₹{gamma_flip:,.0f}",
-            delta=f"{flip_delta:+.0f}",
-            help="Where regime changes from stable to volatile"
-        )
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 8: ACTION PLAN (SUMMARY)
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### ✅ RECOMMENDED ACTION PLAN")
-    
-    action_html = f"""
-    <div style="
-        background: linear-gradient(135deg, {regime_info['color']}, {regime_info['color']}20);
-        border-left: 5px solid {regime_info['color']};
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 20px;
-    ">
-        <h4 style="margin-top: 0; color: {regime_info['color']};">📋 What To Do Now:</h4>
-        <p style="margin: 10px 0; font-size: 16px;"><b>{regime_info['action']}</b></p>
-        <hr style="margin: 15px 0; border: none; border-top: 1px solid {regime_info['color']}40;">
-        <p style="margin: 8px 0;"><b>Primary Strategy:</b> {regime_info['trade_strategy']}</p>
-        <p style="margin: 8px 0;"><b>Entry Confirmation:</b> Monitor parity divergence for signal strengthening</p>
-        <p style="margin: 8px 0;">
-            <b>Position Sizing:</b> 
-            {'🔥 MAXIMUM (all-in) - EXTREME SIGNAL' if regime_info['conviction_level'] >= 9 else 
-             '🔴 LARGE (70-80%) - VERY STRONG SIGNAL' if regime_info['conviction_level'] >= 7 else
-             '🟠 MEDIUM (40-60%) - MODERATE SIGNAL' if regime_info['conviction_level'] >= 5 else
-             '🟡 SMALL (20-40%) - WEAK SIGNAL' if regime_info['conviction_level'] >= 3 else
-             '⚪ TINY (5-20%) - TRANSITIONAL'}
-        </p>
-        <p style="margin: 8px 0;">
-            <b>Risk Management:</b> 
-            {'Use tight stops (1%) - high conviction' if regime_info['conviction_level'] >= 7 else
-             'Use normal stops (2%) - medium conviction' if regime_info['conviction_level'] >= 5 else
-             'Use wide stops (3-5%) - uncertain regime'}
-        </p>
-        <p style="margin: 8px 0;">
-            <b>Time Horizon:</b> 
-            {'Days (breakout imminent)' if regime_info['conviction_level'] >= 9 else
-             'Days to weeks (strong move)' if regime_info['conviction_level'] >= 7 else
-             'Weeks to months (base case)' if regime_info['conviction_level'] >= 5 else
-             'Monitor (regime unclear)'}
-        </p>
-    </div>
-    """
-    st.markdown(action_html, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 9: QUICK DECISION TREE
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### 🎯 Quick Decision Tree")
-    
-    with st.expander("🤔 Help Me Decide What Trade To Take", expanded=False):
-        st.markdown(f"""
-        **Current Regime:** {regime_info['regime']}
-        **Conviction:** {regime_info['conviction_level']}/10
         
-        ---
+        st.dataframe(styled_parity, use_container_width=True, height=400)
         
-        ### Decision Tree:
-        
-        #### Question 1: Do I want to make money on UP move?
-        - **YES** → Buy Calls (if cheap) OR Use Bull Call Spread (if expensive)
-        - **NO** → Go to Question 2
-        
-        #### Question 2: Do I want to make money on DOWN move?
-        - **YES** → Buy Puts (if cheap) OR Use Bear Put Spread (if expensive)
-        - **NO** → Go to Question 3
-        
-        #### Question 3: Do I want to make money from TIME DECAY?
-        - **YES** → Sell Premium: Short Strangles, Iron Condor, or Short Call/Put
-        - **NO** → Go to Question 4
-        
-        #### Question 4: Do I want PROTECTION?
-        - **YES** → Buy cheapest strike puts (use as insurance)
-        - **NO** → You're done, stand aside and watch
-        
-        ---
-        
-        ### Current Market Signal:
-        
-        **Best opportunity:** {('Buy Puts - They are cheap' if regime_info['avg_put_discount'] < 0 else 'Sell Puts - They are expensive')}
-        
-        **Second opportunity:** {('Sell Calls - They are expensive' if regime_info['avg_call_discount'] > 0 else 'Buy Calls - They are cheap')}
-        
-        **Highest conviction trade:** {regime_info['trade_strategy']}
+        # Legend
+        st.markdown("""
+        **Legend:**
+        - **Put Disc (Green):** Puts are cheap (buy signal) - more green = better buy
+        - **Call Disc (Red):** Calls are expensive (sell signal) - more red = better sell
+        - **Divergence (Purple):** Skew intensity - larger = stronger conviction
+        - **Regime:** Market regime classification for that strike
         """)
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════════
-    # SECTION 10: WARNINGS & DISCLAIMERS
-    # ═════════════════════════════════════════════════════════════════════════════
-    
-    st.markdown("### ⚠️ RISK WARNINGS & DISCLAIMERS")
-    
-    with st.expander("📋 Important - Please Read", expanded=False):
-        st.warning("""
-        **⚠️ EDUCATIONAL PURPOSE ONLY**
-        - This analysis is for educational purposes only
-        - NOT financial advice - consult a financial advisor
-        - Past performance ≠ Future results
         
-        **🎲 Market Risks:**
-        - Options prices can gap significantly during hours
-        - Parity analysis assumes normal market conditions
-        - Crisis events can break all parity assumptions
-        - Liquidity issues can skew the analysis
-        - Bid-ask spread not reflected here
+        st.markdown("---")
         
-        **🔧 Technical Limitations:**
-        - Data is from end-of-day or delayed feeds
-        - Real-time pricing may show different discounts
-        - Wide spreads not accounted for
-        - Regulatory changes can impact pricing
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 6: PCRAGG ANALYSIS (from original code, kept for context)
+        # ═══════════════════════════════════════════════════════════════════════════
         
-        **📊 Position Management Rules:**
-        - ✓ Always use stop losses
-        - ✓ Scale in positions gradually
-        - ✓ Never go all-in on any signal
-        - ✓ Manage risk first, profits second
-        - ✓ Position size = max loss you can afford
-        - ✓ Keep portfolio diversified
+        st.markdown("### 📈 Context: PCR & Greeks Analysis")
         
-        **🚫 What NOT To Do:**
-        - ✗ Don't follow signals blindly
-        - ✗ Don't ignore risk management
-        - ✗ Don't trade with money you can't afford to lose
-        - ✗ Don't average down into losing trades
-        - ✗ Don't ignore stop losses
+        col_pcr_1, col_pcr_2, col_pcr_3, col_pcr_4 = st.columns(4)
         
-        **❓ Questions?**
-        Consider consulting with:
-        - Certified financial advisor
-        - Options trading mentor
-        - Risk management professional
-        """)
-    
-    st.markdown("---")
-    
-    # Footer
-    st.markdown(f"""
-    <div style="text-align: center; color: #999; font-size: 12px; padding: 20px; background: #f0f0f0; border-radius: 8px;">
-        <p style="margin: 5px 0;">🔬 <b>GEX Terminal - Institutional Grade Options Analysis</b></p>
-        <p style="margin: 5px 0;">Put-Call Parity + Market Regime Detection</p>
-        <p style="margin: 5px 0;">⏰ Last Updated: {st.session_state.last_update.strftime("%Y-%m-%d %H:%M:%S IST") if st.session_state.last_update else "Unknown"}</p>
-        <p style="margin: 5px 0; color: #c00;">⚠️ For Educational Purposes Only - Not Financial Advice</p>
-    </div>
-    """, unsafe_allow_html=True)
+        with col_pcr_1:
+            total_pcr = gamma_levels.get('pcr', 1.0)
+            st.metric(
+                "📊 Total PCR",
+                f"{total_pcr:.2f}",
+                help="Put/Call OI ratio (entire chain)"
+            )
+        
+        with col_pcr_2:
+            st.metric(
+                "🎯 Max Pain",
+                f"₹{gamma_levels.get('max_pain', spot_price):,.0f}",
+                delta=f"{gamma_levels.get('max_pain', spot_price) - spot_price:+.0f}",
+                help="Where max profit expires worthless"
+            )
+        
+        with col_pcr_3:
+            net_gex = gamma_levels.get('total_gex', 0)
+            regime_gex = "Positive" if net_gex > 0 else "Negative"
+            st.metric(
+                "⚡ Net GEX Regime",
+                f"{regime_gex}",
+                help="Positive = stable, Negative = volatile"
+            )
+        
+        with col_pcr_4:
+            st.metric(
+                "🔄 Gamma Flip",
+                f"₹{gamma_levels.get('gamma_flip', spot_price):,.0f}",
+                help="Where regime changes"
+            )
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 7: ACTION PLAN (Summary)
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        st.markdown("### ✅ RECOMMENDED ACTION PLAN")
+        
+        action_html = f"""
+        <div style="
+            background: linear-gradient(135deg, {regime_info['color']}, {regime_info['color']}20);
+            border-left: 4px solid {regime_info['color']};
+            border-radius: 8px;
+            padding: 15px;
+        ">
+            <h4 style="margin-top: 0;">Based on Current Market Regime:</h4>
+            <p><b>{regime_info['action']}</b></p>
+            <hr style="margin: 10px 0;">
+            <p><b>Primary Trade:</b> {regime_info['trade_strategy']}</p>
+            <p><b>Entry Signal:</b> Monitor parity divergence for confirmation</p>
+            <p><b>Risk Management:</b> 
+                {'Use stop loss 2% away from ATM' if 'BULLISH' in regime_info['regime'] else 
+                 'Use tight stops (1% from support)' if 'REVERSAL' in regime_info['regime'] else
+                 'Use wider stops (3%) for premium selling'}
+            </p>
+            <p><b>Position Sizing:</b> {int(regime_info['conviction_level'])}% of portfolio based on conviction</p>
+        </div>
+        """
+        st.markdown(action_html, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # SECTION 8: RISK WARNINGS
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        st.markdown("### ⚠️ RISK WARNINGS & DISCLAIMERS")
+        
+        with st.expander("📋 Important Notes (Click to Read)"):
+            st.warning("""
+            **Educational Purpose Only:**
+            - This analysis is for educational purposes only
+            - Not financial advice - consult a financial advisor
+            - Past performance ≠ Future results
+            
+            **Market Risks:**
+            - Options prices can gap significantly during market hours
+            - Parity analysis assumes normal market conditions
+            - Crisis events can break parity assumptions
+            - Liquidity issues can skew the analysis
+            
+            **Technical Limitations:**
+            - Data is from end-of-day or delayed feeds
+            - Real-time pricing may show different discounts
+            - Wide bid-ask spreads not reflected here
+            - Regulatory changes can impact pricing
+            
+            **Position Management:**
+            - Always use stop losses
+            - Scale in positions gradually
+            - Don't go all-in on any signal
+            - Manage risk first, profits second
+            """)
+        
+        st.markdown("---")
+        
+        # Footer
+        st.markdown("""
+        <div style="text-align: center; color: #999; font-size: 12px; padding: 20px;">
+            <p>🔬 <b>GEX Terminal - Institutional Grade Options Analysis</b></p>
+            <p>Real-time Put-Call Parity + Market Regime Detection</p>
+            <p>⏰ Last Updated: {} | Data: Kite Connect V3</p>
+        </div>
+        """.format(st.session_state.last_update.strftime("%Y-%m-%d %H:%M:%S IST") 
+                   if st.session_state.last_update else "Unknown"),
+        unsafe_allow_html=True)
 
     with tab6:
         st.subheader("Options Chain with Greeks")
