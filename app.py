@@ -1605,7 +1605,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         
         parity_display = parity_df[['strike', 'put_discount', 'call_discount', 'divergence', 'strike_regime']].copy()
         parity_display.columns = ['Strike', 'Put Disc', 'Call Disc', 'Divergence', 'Regime']
-        parity_display = parity_display.sort_values('Strike').reset_index(drop=True)
+        
         
         parity_fmt = parity_display.copy()
         parity_fmt['Strike']    = parity_fmt['Strike'].apply(lambda x: f"₹{x:,.0f}")
