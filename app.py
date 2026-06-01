@@ -1618,12 +1618,12 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             use_container_width=True,
             height=min(400, 36 * (len(parity_fmt) + 1) + 3),
             column_config={
-                "Strike":    st.column_config.TextColumn("Strike",    width="medium"),
-                "Put Disc":  st.column_config.TextColumn("Put Disc",  width="medium"),
-                "Call Disc": st.column_config.TextColumn("Call Disc", width="medium"),
-                "Divergence":st.column_config.TextColumn("Divergence",width="medium"),
-                "Regime":    st.column_config.TextColumn("Regime",    width="large"),
-            }
+                "Strike":    st.column_config.TextColumn("Strike",    width="small"),
+                "Put Disc":  st.column_config.TextColumn("Put Disc",  width="small"),
+                "Call Disc": st.column_config.TextColumn("Call Disc", width="small"),
+                "Divergence":st.column_config.TextColumn("Divergence",width="small"),
+                "Regime":    st.column_config.TextColumn("Regime",    width="medium"),
+            },
         )
         
         st.markdown("""
