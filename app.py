@@ -1616,7 +1616,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         st.dataframe(
             parity_fmt,
             use_container_width=True,
-            height=400,
+            height=min(400, 36 * (len(parity_fmt) + 1) + 3),
             column_config={
                 "Strike":    st.column_config.TextColumn("Strike",    width="medium"),
                 "Put Disc":  st.column_config.TextColumn("Put Disc",  width="medium"),
