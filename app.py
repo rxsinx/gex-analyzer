@@ -46,6 +46,12 @@ from modules.kite_connector import (
     KiteManager, KiteError, KiteAuthError, KiteDataError,
 )
 
+from modules.premarket_pricer import (
+    get_premarket_spot,
+    calculate_premarket_prices,
+    get_premarket_summary,
+)
+
 try:
     import config as _cfg
     KITE_API_KEY         = _cfg.KITE_API_KEY
@@ -725,9 +731,9 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 
     # ── tabs ──────────────────────────────────────────────────────────────────
     st.markdown("---")
-    tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
+    tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8 = st.tabs([
         "📊 GEX","📈 OI & Volume","🎲 Greeks",
-        "📉 Charts","🎯 Signals","📋 Chain","ℹ️ Guide",
+        "📉 Charts","🎯 Signals","📋 Chain","ℹ️ Guide","🌅 Pre-Market",
     ])
 
     with tab1:
@@ -1851,6 +1857,460 @@ GEX levels shift when OI changes (slowly); GEX *magnitude* shifts when spot move
 
 ⚠️ Educational only. Not financial advice.
         """)
+    
+    with tab8:
+        st.subheader("🌅 Pre-Market Option Pricer — Expected Prices at 9:15 Open")
+
+        from modules.premarket_pricer import (
+            get_premarket_spot,
+            calculate_premarket_prices,
+            get_premarket_summary,
+        )
+
+        # ─────────────────────────────────────────────────────────────────────
+        # INFO BANNER
+        # ─────────────────────────────────────────────────────────────────────
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95));
+            border: 1px solid rgba(99,102,241,0.4);
+            border-left: 4px solid #818cf8;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        ">
+            <b style="color:#818cf8;">🕐 How This Works</b><br>
+            <span style="color:#cbd5e1;">
+            NSE pre-open runs <b>9:00 → 9:08 AM</b>. At ~9:07 AM, the exchange
+            publishes the <b>Indicative Equilibrium Price (IEP)</b> — the expected opening spot.<br>
+            This tool uses that IEP + <b>last session's IV</b> + Black-Scholes to calculate
+            the expected option premium for every strike before 9:15 opens.
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ─────────────────────────────────────────────────────────────────────
+        # CONTROLS
+        # ─────────────────────────────────────────────────────────────────────
+        ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([2, 1, 1])
+
+        with ctrl_c1:
+            # Manual spot override — useful for "what if spot opens at X"
+            manual_spot = st.number_input(
+                "Pre-Market Spot (IEP) — auto-fetched or override manually",
+                min_value=1000.0,
+                max_value=200000.0,
+                value=float(spot_price),
+                step=float(si),
+                format="%.2f",
+                help="Auto-fetched from Kite at 9:07 AM. You can also type any value to run a What-If scenario.",
+                key="pm_spot_input",
+            )
+
+        with ctrl_c2:
+            # Fetch live IEP from Kite
+            if st.button(
+                "🔄 Fetch Live IEP",
+                use_container_width=True,
+                type="primary",
+                key="pm_fetch_btn",
+                disabled=(not st.session_state.kite_authenticated),
+                help="Fetch NSE Indicative Equilibrium Price (9:00–9:08 AM)",
+            ):
+                km = st.session_state.kite_manager
+                if km:
+                    with st.spinner("Fetching pre-market spot…"):
+                        pm_data = get_premarket_spot(km, symbol)
+                    if pm_data["spot"]:
+                        st.session_state["pm_fetched_spot"] = pm_data["spot"]
+                        st.session_state["pm_prev_close"]   = pm_data["prev_close"]
+                        st.session_state["pm_gap"]          = pm_data["gap"]
+                        st.session_state["pm_gap_pct"]      = pm_data["gap_pct"]
+                        st.session_state["pm_timestamp"]    = pm_data["timestamp"]
+                        st.success(f"IEP: ₹{pm_data['spot']:,.2f}  ({pm_data['gap_pct']:+.2f}%)")
+                    else:
+                        st.error(f"Fetch failed: {pm_data['error']}")
+
+        with ctrl_c3:
+            st.metric(
+                "📌 Last Fetched IEP",
+                f"₹{st.session_state.get('pm_fetched_spot', spot_price):,.2f}",
+                delta=f"{st.session_state.get('pm_gap_pct', 0):+.2f}%",
+            )
+
+        # Use manual input or last fetched IEP
+        pm_spot = manual_spot
+
+        st.markdown("---")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # CALCULATE EXPECTED PRICES
+        # ─────────────────────────────────────────────────────────────────────
+        expiry_date = st.session_state.selected_expiry
+
+        pm_df = calculate_premarket_prices(
+            gex_df, pm_spot, expiry_date,
+            st.session_state.risk_free_rate_val,
+        )
+
+        ohlc_data  = st.session_state.spot_ohlc or {}
+        prev_close = ohlc_data.get("close", spot_price)
+        summary    = get_premarket_summary(pm_df, pm_spot, prev_close, expiry_date)
+
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 1: GAP BANNER
+        # ─────────────────────────────────────────────────────────────────────
+        gap     = pm_spot - prev_close
+        gap_pct = (gap / prev_close * 100) if prev_close else 0
+        gap_dir = "GAP UP ▲" if gap > 0 else "GAP DOWN ▼" if gap < 0 else "FLAT ●"
+        gap_col = "#22c55e" if gap > 0 else "#ef4444" if gap < 0 else "#94a3b8"
+
+        st.markdown(f"""
+        <div style="
+            background: {gap_col}18;
+            border: 2px solid {gap_col};
+            border-radius: 10px;
+            padding: 18px 22px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        ">
+            <div>
+                <div style="font-size:22px; font-weight:bold; color:{gap_col};">
+                    {symbol} &nbsp; {gap_dir}
+                </div>
+                <div style="font-size:13px; color:#94a3b8; margin-top:4px;">
+                    Pre-Market IEP: <b style="color:white;">₹{pm_spot:,.2f}</b> &nbsp;|&nbsp;
+                    Prev Close: <b style="color:white;">₹{prev_close:,.2f}</b> &nbsp;|&nbsp;
+                    Gap: <b style="color:{gap_col};">{gap:+.2f} pts ({gap_pct:+.2f}%)</b>
+                </div>
+            </div>
+            <div style="text-align:right; font-size:12px; color:#64748b;">
+                Using last session IV<br>
+                Expiry: {expiry_date}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 2: ATM METRICS (5 key numbers to know before 9:15)
+        # ─────────────────────────────────────────────────────────────────────
+        st.markdown("### 📊 ATM Snapshot — What To Expect at 9:15")
+
+        atm_strike = summary.get("atm_strike", int(get_atm_strike(pm_spot, si)))
+
+        m1, m2, m3, m4, m5 = st.columns(5)
+
+        m1.metric(
+            "⭐ ATM Strike",
+            f"₹{atm_strike:,}",
+            help="Strike closest to the pre-market IEP",
+        )
+        m2.metric(
+            "📞 ATM Call (exp)",
+            f"₹{summary.get('atm_call_exp', 0):.2f}",
+            delta=f"{summary.get('atm_call_chg', 0):+.2f}",
+            help=f"Previous close: ₹{summary.get('atm_call_prev', 0):.2f}",
+        )
+        m3.metric(
+            "📉 ATM Put (exp)",
+            f"₹{summary.get('atm_put_exp', 0):.2f}",
+            delta=f"{summary.get('atm_put_chg', 0):+.2f}",
+            help=f"Previous close: ₹{summary.get('atm_put_prev', 0):.2f}",
+        )
+        m4.metric(
+            "🔷 Straddle Cost",
+            f"₹{summary.get('atm_straddle_exp', 0):.2f}",
+            delta=f"{summary.get('atm_straddle_chg', 0):+.2f}  ({summary.get('atm_straddle_chg_pct', 0):+.1f}%)",
+            help=f"Previous straddle: ₹{summary.get('atm_straddle_prev', 0):.2f}",
+        )
+        m5.metric(
+            "📐 Breakeven Zone",
+            f"₹{int(summary.get('breakeven_dn', 0)):,} — ₹{int(summary.get('breakeven_up', 0)):,}",
+            help="ATM strike ± expected straddle cost",
+        )
+
+        st.markdown("---")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 3: MOVERS — Top Gainers / Losers
+        # ─────────────────────────────────────────────────────────────────────
+        st.markdown("### 🚀 Biggest Movers at Expected Open")
+
+        mv1, mv2, mv3, mv4 = st.columns(4)
+
+        mv1.metric(
+            "🟢 Top Call Gainer",
+            f"₹{summary.get('top_call_gainer_strike', 0):,}",
+            delta=f"{summary.get('top_call_gainer_pct', 0):+.1f}%",
+            help="Strike where call premium rises most",
+        )
+        mv2.metric(
+            "🔴 Top Call Loser",
+            f"₹{summary.get('top_call_loser_strike', 0):,}",
+            delta=f"{summary.get('top_call_loser_pct', 0):+.1f}%",
+            help="Strike where call premium drops most",
+        )
+        mv3.metric(
+            "🟢 Top Put Gainer",
+            f"₹{summary.get('top_put_gainer_strike', 0):,}",
+            delta=f"{summary.get('top_put_gainer_pct', 0):+.1f}%",
+            help="Strike where put premium rises most",
+        )
+        mv4.metric(
+            "🔴 Top Put Loser",
+            f"₹{summary.get('top_put_loser_strike', 0):,}",
+            delta=f"{summary.get('top_put_loser_pct', 0):+.1f}%",
+            help="Strike where put premium drops most",
+        )
+
+        st.markdown("---")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 4: FULL EXPECTED PRICE TABLE
+        # ─────────────────────────────────────────────────────────────────────
+        st.markdown("### 📋 Expected Option Prices at 9:15 Open — Full Chain")
+
+        # Build display dataframe
+        tbl = pm_df[[
+            "strike", "moneyness",
+            "prev_call", "exp_call", "call_chg", "call_chg_pct",
+            "prev_put",  "exp_put",  "put_chg",  "put_chg_pct",
+            "straddle_prev", "straddle_exp", "straddle_chg",
+            "signal",
+        ]].copy()
+
+        tbl.columns = [
+            "Strike", "Type",
+            "Call (Prev)", "Call (Exp)", "Call Δ", "Call Δ%",
+            "Put (Prev)",  "Put (Exp)",  "Put Δ",  "Put Δ%",
+            "Straddle Prev", "Straddle Exp", "Straddle Δ",
+            "Signal",
+        ]
+
+        # Format display
+        tbl_fmt = tbl.copy()
+        tbl_fmt["Strike"]       = tbl_fmt["Strike"].apply(lambda x: f"₹{x:,}")
+        tbl_fmt["Call (Prev)"]  = tbl_fmt["Call (Prev)"].apply(lambda x: f"₹{x:.2f}")
+        tbl_fmt["Call (Exp)"]   = tbl_fmt["Call (Exp)"].apply(lambda x: f"₹{x:.2f}")
+        tbl_fmt["Call Δ"]       = tbl_fmt["Call Δ"].apply(lambda x: f"{x:+.2f}")
+        tbl_fmt["Call Δ%"]      = tbl_fmt["Call Δ%"].apply(lambda x: f"{x:+.1f}%")
+        tbl_fmt["Put (Prev)"]   = tbl_fmt["Put (Prev)"].apply(lambda x: f"₹{x:.2f}")
+        tbl_fmt["Put (Exp)"]    = tbl_fmt["Put (Exp)"].apply(lambda x: f"₹{x:.2f}")
+        tbl_fmt["Put Δ"]        = tbl_fmt["Put Δ"].apply(lambda x: f"{x:+.2f}")
+        tbl_fmt["Put Δ%"]       = tbl_fmt["Put Δ%"].apply(lambda x: f"{x:+.1f}%")
+        tbl_fmt["Straddle Prev"]= tbl_fmt["Straddle Prev"].apply(lambda x: f"₹{x:.2f}")
+        tbl_fmt["Straddle Exp"] = tbl_fmt["Straddle Exp"].apply(lambda x: f"₹{x:.2f}")
+        tbl_fmt["Straddle Δ"]   = tbl_fmt["Straddle Δ"].apply(lambda x: f"{x:+.2f}")
+
+        # Styler
+        def _style_pm_table(row):
+            styles = [""] * len(row)
+            col_names = list(tbl_fmt.columns)
+
+            # ATM row highlight
+            if row["Type"] == "ATM":
+                return ["background-color:rgba(250,204,21,0.15); border:1px solid #fbbf24;"] * len(row)
+
+            # Call delta column coloring
+            try:
+                ci = col_names.index("Call Δ")
+                call_chg_val = tbl.loc[
+                    tbl_fmt.index[tbl_fmt.index == row.name], "Call Δ"
+                ].values[0]
+                if call_chg_val > 50:
+                    styles[ci] = "background-color:rgba(34,197,94,0.6);color:white;font-weight:bold;"
+                elif call_chg_val > 20:
+                    styles[ci] = "background-color:rgba(34,197,94,0.35);color:white;"
+                elif call_chg_val > 0:
+                    styles[ci] = "background-color:rgba(34,197,94,0.15);color:white;"
+                elif call_chg_val < -50:
+                    styles[ci] = "background-color:rgba(239,68,68,0.6);color:white;font-weight:bold;"
+                elif call_chg_val < -20:
+                    styles[ci] = "background-color:rgba(239,68,68,0.35);color:white;"
+                elif call_chg_val < 0:
+                    styles[ci] = "background-color:rgba(239,68,68,0.15);color:white;"
+            except Exception:
+                pass
+
+            # Put delta column coloring
+            try:
+                pi = col_names.index("Put Δ")
+                put_chg_val = tbl.loc[
+                    tbl_fmt.index[tbl_fmt.index == row.name], "Put Δ"
+                ].values[0]
+                if put_chg_val > 50:
+                    styles[pi] = "background-color:rgba(34,197,94,0.6);color:white;font-weight:bold;"
+                elif put_chg_val > 20:
+                    styles[pi] = "background-color:rgba(34,197,94,0.35);color:white;"
+                elif put_chg_val > 0:
+                    styles[pi] = "background-color:rgba(34,197,94,0.15);color:white;"
+                elif put_chg_val < -50:
+                    styles[pi] = "background-color:rgba(239,68,68,0.6);color:white;font-weight:bold;"
+                elif put_chg_val < -20:
+                    styles[pi] = "background-color:rgba(239,68,68,0.35);color:white;"
+                elif put_chg_val < 0:
+                    styles[pi] = "background-color:rgba(239,68,68,0.15);color:white;"
+            except Exception:
+                pass
+
+            return styles
+
+        st.dataframe(
+            tbl_fmt.style.apply(_style_pm_table, axis=1),
+            use_container_width=True,
+            height=420,
+            column_config={
+                "Strike":       st.column_config.TextColumn("Strike",        width="small"),
+                "Type":         st.column_config.TextColumn("Type",          width="small"),
+                "Call (Prev)":  st.column_config.TextColumn("Call Prev",     width="small"),
+                "Call (Exp)":   st.column_config.TextColumn("Call Exp ★",    width="small"),
+                "Call Δ":       st.column_config.TextColumn("Call Δ",        width="small"),
+                "Call Δ%":      st.column_config.TextColumn("Call Δ%",       width="small"),
+                "Put (Prev)":   st.column_config.TextColumn("Put Prev",      width="small"),
+                "Put (Exp)":    st.column_config.TextColumn("Put Exp ★",     width="small"),
+                "Put Δ":        st.column_config.TextColumn("Put Δ",         width="small"),
+                "Put Δ%":       st.column_config.TextColumn("Put Δ%",        width="small"),
+                "Straddle Prev":st.column_config.TextColumn("Strd Prev",     width="small"),
+                "Straddle Exp": st.column_config.TextColumn("Strd Exp",      width="small"),
+                "Straddle Δ":   st.column_config.TextColumn("Strd Δ",        width="small"),
+                "Signal":       st.column_config.TextColumn("Signal",        width="medium"),
+            },
+        )
+
+        st.markdown("""
+        **Legend:**
+        - **★ Exp columns** = Expected price at 9:15 (using IEP + last IV)
+        - 🟢 **Green Δ** = Premium expected to RISE at open
+        - 🔴 **Red Δ** = Premium expected to FALL at open
+        - 🌟 **ATM row** = Strike closest to today's expected open
+        """)
+
+        st.markdown("---")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 5: WHAT-IF SCENARIO TOOL
+        # ─────────────────────────────────────────────────────────────────────
+        st.markdown("### 🔬 What-If Scenario — Try Different Opening Prices")
+
+        with st.expander("▶ Run Multiple Opening Scenarios", expanded=False):
+            wf_c1, wf_c2, wf_c3 = st.columns(3)
+
+            with wf_c1:
+                scenario_gap = st.slider(
+                    "Gap from Prev Close (pts)",
+                    min_value=-500, max_value=500,
+                    value=int(gap), step=int(si),
+                    key="scenario_gap_slider",
+                )
+            with wf_c2:
+                scenario_spot = prev_close + scenario_gap
+                st.metric("Scenario Spot", f"₹{scenario_spot:,.2f}",
+                          delta=f"{scenario_gap:+.0f} ({scenario_gap/prev_close*100:+.2f}%)")
+            with wf_c3:
+                st.caption(f"""
+**Scenario parameters:**
+- Prev close: ₹{prev_close:,.2f}
+- Scenario spot: ₹{scenario_spot:,.2f}
+- Gap: {scenario_gap:+.0f} pts
+- IV source: Last session close
+                """)
+
+            # Recalculate for scenario
+            if scenario_spot != pm_spot:
+                sc_df = calculate_premarket_prices(
+                    gex_df, scenario_spot, expiry_date,
+                    st.session_state.risk_free_rate_val,
+                )
+                sc_summary = get_premarket_summary(
+                    sc_df, scenario_spot, prev_close, expiry_date)
+
+                sc_atm = sc_summary.get("atm_strike", atm_strike)
+
+                sc1, sc2, sc3, sc4 = st.columns(4)
+                sc1.metric("ATM Strike",
+                           f"₹{sc_atm:,}")
+                sc2.metric("ATM Call",
+                           f"₹{sc_summary.get('atm_call_exp', 0):.2f}",
+                           delta=f"{sc_summary.get('atm_call_chg', 0):+.2f}")
+                sc3.metric("ATM Put",
+                           f"₹{sc_summary.get('atm_put_exp', 0):.2f}",
+                           delta=f"{sc_summary.get('atm_put_chg', 0):+.2f}")
+                sc4.metric("Straddle",
+                           f"₹{sc_summary.get('atm_straddle_exp', 0):.2f}",
+                           delta=f"{sc_summary.get('atm_straddle_chg', 0):+.2f}")
+
+        st.markdown("---")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 6: STRATEGY NOTES
+        # ─────────────────────────────────────────────────────────────────────
+        st.markdown("### 💡 Pre-Market Strategy Guidance")
+
+        with st.expander("📘 How To Use This For Trading (Click to Read)", expanded=False):
+            st.markdown(f"""
+#### 📌 Reading the Expected Prices
+
+**If market gaps UP ({symbol} opens above prev close):**
+- ITM Calls become more expensive (deep ITM calls rise sharply)
+- OTM Calls become ATM or near-ATM (check the Type column shift)
+- All Puts lose value (look for Put Δ% in red)
+- Strategy: **Pre-place call buy order at expected price** before 9:15
+
+**If market gaps DOWN ({symbol} opens below prev close):**
+- ITM Puts become more expensive
+- OTM Puts become ATM or near-ATM
+- All Calls lose value
+- Strategy: **Pre-place put buy order at expected price** before 9:15
+
+---
+
+#### 🎯 Key Numbers to Note Before 9:15
+
+| What to note | Where to find it | Why it matters |
+|:---|:---|:---|
+| ATM Strike at open | "ATM" row in Type column | Where to trade |
+| Expected ATM Call | Call (Exp) at ATM row | Your buy price reference |
+| Expected ATM Put | Put (Exp) at ATM row | Your buy price reference |
+| Straddle cost | Straddle Exp at ATM | Max move needed to profit |
+| Breakeven zone | Metrics above | Where spot must go for profit |
+
+---
+
+#### ⚠️ Important Limitations
+
+1. **IV stays flat in this model** — In reality, IV may spike on gap-open
+   (volatility crush or spike adds/subtracts ₹5–50 from expected prices)
+2. **The first 1 minute (9:15–9:16)** often sees extreme price discovery
+3. **Use as a reference range**, not an exact price — place orders at expected price ± 5%
+4. **Market orders at open are dangerous** — always use limit orders
+5. **Best used between 9:05–9:12 AM** when IEP is most stable
+
+---
+
+#### 🔄 Workflow
+
+```
+9:00 AM → Open GEX Terminal, go to Pre-Market tab
+9:05 AM → Click "🔄 Fetch Live IEP" (first stable reading)
+9:07 AM → Click again (most accurate — matching has begun)
+9:07 AM → Note ATM strike, expected call/put prices
+9:10 AM → Place limit orders in Kite at expected prices
+9:15 AM → Market opens, orders fill at or near expected prices
+```
+            """)
+
+        # Footer
+        last_upd = (st.session_state.last_update.strftime("%d-%b-%Y %H:%M:%S IST")
+                    if st.session_state.last_update else "Unknown")
+        st.markdown(f"""
+        <div style="text-align:center;color:#4b5563;font-size:11px;padding:16px;">
+            IV source: Last chain fetch ({last_upd}) · 
+            BSM pricing · Not financial advice
+        </div>
+        """, unsafe_allow_html=True)
 
 # ── welcome screen ────────────────────────────────────────────────────────────
 else:
