@@ -69,7 +69,7 @@ except Exception:
 IST = pytz.timezone("Asia/Kolkata")
 
 # ── page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="GEX Terminal", page_icon="📊",
+st.set_page_config(page_title="GEX Index Terminal", page_icon="📊",
                    layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
 <style>
