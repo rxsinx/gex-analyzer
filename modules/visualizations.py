@@ -150,10 +150,10 @@ def plot_oi_analysis(gex_df, spot_price):
 
 def plot_iv_smile(gex_df):
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=gex_df['strike'], y=gex_df['call_iv'], mode='lines+markers',
+    fig.add_trace(go.Scatter(x=gex_df['strike'], y=gex_df['call_iv'], mode='lines',
                              name='Call IV', line=dict(color='rgb(239,68,68)', width=2),
                              hovertemplate='<b>Strike:</b> %{x}<br><b>Call IV:</b> %{y:.2f}%<extra></extra>'))
-    fig.add_trace(go.Scatter(x=gex_df['strike'], y=gex_df['put_iv'], mode='lines+markers',
+    fig.add_trace(go.Scatter(x=gex_df['strike'], y=gex_df['put_iv'], mode='lines',
                              name='Put IV', line=dict(color='rgb(34,197,94)', width=2),
                              hovertemplate='<b>Strike:</b> %{x}<br><b>Put IV:</b> %{y:.2f}%<extra></extra>'))
     fig.update_layout(title="📈 Volatility Smile", xaxis_title="Strike (₹)",
