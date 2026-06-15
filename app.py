@@ -752,12 +752,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         matrix_df['pcr_strike'] = matrix_df.apply(lambda r: r['put_oi'] / r['call_oi'] if r['call_oi'] > 0 else 0, axis=1)
 
         # ── 3. PUT-CALL PARITY rows ──────────────────────────────────────────────
-        # Put Discount  = (Spot + Put_LTP) - Strike   → Negative = cheap (BUY)
-        # Call Discount = (Spot - Call_LTP) - Strike  → Positive = expensive (SELL)
-        # Divergence    = Put_Discount - Call_Discount → conviction / skew
-        matrix_df['put_discount']  = (spot_price + matrix_df['put_ltp'])  - matrix_df['strike']
-        matrix_df['call_discount'] = (spot_price - matrix_df['call_ltp']) - matrix_df['strike']
-        matrix_df['divergence']    = matrix_df['put_discount'] - matrix_df['call_discount']
+        
         
         # 4. Transpose parameters into rows & scale units to Cr and L
         grid_data = {
@@ -771,11 +766,6 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "Call Prem": matrix_df["call_ltp"].tolist(),      # CHANGED:  ltp
             "Put Prem": matrix_df["put_ltp"].tolist(),       # CHANGED:  ltp
             
-            # ── NEW parity rows ──────────────────────────────────────────────────
-            "Put Discount":    matrix_df["put_discount"].round(1).tolist(),
-            "Call Discount":   matrix_df["call_discount"].round(1).tolist(),
-            "Divergence":      matrix_df["divergence"].round(1).tolist(),
-            
             
         }
     
@@ -783,11 +773,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
        
         
         # 5. Append Total / Net Calculations Column on Right Margin
-        avg_put_disc  = matrix_df['put_discount'].mean()
-        avg_call_disc = matrix_df['call_discount'].mean()
-        avg_div       = matrix_df['divergence'].mean()
-        
-        
+                
         display_matrix["TOTAL / NET"] = [
             gex_df['call_gex'].sum() / 1e7,
             gex_df['put_gex'].sum() / 1e7,
@@ -797,9 +783,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             total_pcr,
             pd.NA,  # <── ADDED: Blanks out Call Premium Total
             pd.NA,   # <── ADDED: Blanks out Put Premium Total
-            round(avg_put_disc,  1),   # avg Put Discount across chain
-            round(avg_call_disc, 1),   # avg Call Discount across chain
-            round(avg_div,       1),   # avg Divergence across chain
+            
             
         ]
         
@@ -836,16 +820,10 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         top1_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(1).index[0]
         top2_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(2).index[-1]
   
-        # Best put to buy (most discounted) and best call to sell (most expensive)
-        put_disc_series  = display_matrix.loc["Put Discount",  strikes_only].astype(float)
-        call_disc_series = display_matrix.loc["Call Discount", strikes_only].astype(float)
-        best_put_buy     = put_disc_series.idxmin()          # most negative  = cheapest put
-        best_call_sell   = call_disc_series.idxmax()          # most positive  = priciest call
-        
+                
         # String format converter with suffix markers
-        display_matrix_fmt = display_matrix.map(
-            lambda x: "—" if pd.isna(x) else f"{x:+.1f}" if isinstance(x, float) else str(x)
-        )
+        display_matrix_fmt = display_matrix.map(lambda x: "—" if pd.isna(x) else f"{x:.2f}")
+        
         display_matrix_fmt.loc["Call GEX (Cr)", top1_call_gex] += " (R)"
         display_matrix_fmt.loc["Call GEX (Cr)", top2_call_gex] += " (R)"
         display_matrix_fmt.loc["Put GEX (Cr)", top1_put_gex] += " (S)"
@@ -861,9 +839,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (R)"
         display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (R)"
 
-        # Label parity highlights
-        display_matrix_fmt.loc["Put Discount",  best_put_buy]   += " ★"   # cheapest put
-        display_matrix_fmt.loc["Call Discount", best_call_sell] += " ★"   # priciest call
+        
         
         # 9. Styler ────
         # Styler layout generation engine
@@ -889,57 +865,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             styles.loc["Call OI (L)", top1_call_oi] = 'background-color: rgba(245, 158, 11, 0.6); color: white; font-weight: bold;'
             styles.loc["Call OI (L)", top2_call_oi] = 'background-color: rgba(245, 158, 11, 0.35); color: white;'
             
-            # ── PUT DISCOUNT row: green = cheap (negative), red = expensive (positive) ──
-            for col in strikes_only:
-                try:
-                    val = float(display_matrix.loc["Put Discount", col])
-                    if val < -200:
-                        styles.loc["Put Discount", col] = 'background-color:rgba(34,197,94,0.75);color:white;font-weight:bold;'
-                    elif val < -100:
-                        styles.loc["Put Discount", col] = 'background-color:rgba(34,197,94,0.45);color:white;'
-                    elif val < 0:
-                        styles.loc["Put Discount", col] = 'background-color:rgba(34,197,94,0.20);color:white;'
-                    elif val > 100:
-                        styles.loc["Put Discount", col] = 'background-color:rgba(239,68,68,0.55);color:white;font-weight:bold;'
-                    elif val > 0:
-                        styles.loc["Put Discount", col] = 'background-color:rgba(239,68,68,0.25);color:white;'
-                except (TypeError, ValueError):
-                    pass
- 
-            # ── CALL DISCOUNT row: red = expensive (positive), green = cheap (negative) ──
-            for col in strikes_only:
-                try:
-                    val = float(display_matrix.loc["Call Discount", col])
-                    if val > 200:
-                        styles.loc["Call Discount", col] = 'background-color:rgba(239,68,68,0.75);color:white;font-weight:bold;'
-                    elif val > 100:
-                        styles.loc["Call Discount", col] = 'background-color:rgba(239,68,68,0.45);color:white;'
-                    elif val > 0:
-                        styles.loc["Call Discount", col] = 'background-color:rgba(239,68,68,0.20);color:white;'
-                    elif val < -100:
-                        styles.loc["Call Discount", col] = 'background-color:rgba(34,197,94,0.55);color:white;font-weight:bold;'
-                    elif val < 0:
-                        styles.loc["Call Discount", col] = 'background-color:rgba(34,197,94,0.25);color:white;'
-                except (TypeError, ValueError):
-                    pass
- 
-            # ── DIVERGENCE row: purple = large skew ──────────────────────────────
-            for col in strikes_only:
-                try:
-                    val = abs(float(display_matrix.loc["Divergence", col]))
-                    if val > 250:
-                        styles.loc["Divergence", col] = 'background-color:rgba(147,51,234,0.70);color:white;font-weight:bold;'
-                    elif val > 150:
-                        styles.loc["Divergence", col] = 'background-color:rgba(147,51,234,0.40);color:white;'
-                    elif val > 75:
-                        styles.loc["Divergence", col] = 'background-color:rgba(147,51,234,0.20);color:white;'
-                except (TypeError, ValueError):
-                    pass
- 
-            # Star highlights for best parity opportunities
-            styles.loc["Put Discount",  best_put_buy]   = 'background-color:rgba(34,197,94,0.9);color:white;font-weight:bold;border:2px solid #16a34a;'
-            styles.loc["Call Discount", best_call_sell] = 'background-color:rgba(239,68,68,0.9);color:white;font-weight:bold;border:2px solid #dc2626;'
- 
+             
             # TOTAL / NET column styling
             styles["TOTAL / NET"] = (
                 'background-color:rgba(148,163,184,0.15);font-weight:bold;border-left:2px solid gray;'
@@ -981,17 +907,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             use_container_width=True
         )
  
-        # 11. Parity legend (compact, right below the matrix)
-        st.markdown("""
-        <div style="font-size:12px; color:#666; padding:6px 0 2px 0; line-height:1.7;">
-        <b>Parity Legend</b> &nbsp;|&nbsp;
-        <span style="background:rgba(34,197,94,0.6);color:white;padding:1px 6px;border-radius:3px;">Put Discount −ve</span> = puts cheap (BUY) &nbsp;
-        <span style="background:rgba(239,68,68,0.6);color:white;padding:1px 6px;border-radius:3px;">Call Discount +ve</span> = calls expensive (SELL) &nbsp;
-        <span style="background:rgba(147,51,234,0.6);color:white;padding:1px 6px;border-radius:3px;">Divergence</span> = conviction/skew &nbsp;
-        <b>★</b> = best opportunity
-        </div>
-        """, unsafe_allow_html=True)
- 
+         
         st.markdown("---")
     
         # ─── d. 📝 Technical Reference Note ───
