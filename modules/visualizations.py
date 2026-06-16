@@ -18,7 +18,10 @@ from plotly.subplots import make_subplots
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def plot_gex_profile(gex_df, spot_price, gamma_levels):
-    fig = go.Figure()
+    from plotly.subplots import make_subplots as _msp
+
+    # Dual-axis: GEX bars on primary Y, OI lines on secondary Y
+    fig = _msp(specs=[[{"secondary_y": True}]])
     
     # ── 1. ADD BARS FOR CALL AND PUT GEX ───────────────────────────────────────
     fig.add_trace(go.Bar(
@@ -74,17 +77,70 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     if gex_resistance:
         fig.add_vline(x=gex_resistance, line_dash="dash", line_color="#ef4444", line_width=1.5)
 
+    # ── OI LINES + CROSSOVER (secondary Y) ──────────────────────────────────
+    import numpy as _np
+
+    # Scale OI to Lacs for readability on secondary axis
+    call_oi_l = gex_df["call_oi"].values / 1e5
+    put_oi_l  = gex_df["put_oi"].values  / 1e5
+    strikes_arr = gex_df["strike"].values
+
+    fig.add_trace(go.Scatter(
+        x=strikes_arr, y=call_oi_l,
+        mode="lines+markers",
+        name="Call OI (L)",
+        line=dict(color="rgba(239,68,68,0.90)", width=2.0, dash="solid"),
+        marker=dict(size=4, color="rgba(239,68,68,0.90)"),
+        hovertemplate="Strike ₹%{x}<br>Call OI: %{y:.2f}L<extra></extra>",
+    ), secondary_y=True)
+
+    fig.add_trace(go.Scatter(
+        x=strikes_arr, y=put_oi_l,
+        mode="lines+markers",
+        name="Put OI (L)",
+        line=dict(color="rgba(34,197,94,0.90)", width=2.0, dash="solid"),
+        marker=dict(size=4, color="rgba(34,197,94,0.90)"),
+        hovertemplate="Strike ₹%{x}<br>Put OI: %{y:.2f}L<extra></extra>",
+    ), secondary_y=True)
+
+    # ── Crossover detection: Call OI crosses ABOVE Put OI ──────────────────
+    diff = call_oi_l - put_oi_l   # +ve → Call > Put
+    for i in range(len(diff) - 1):
+        if diff[i] * diff[i + 1] < 0 and diff[i + 1] > 0:   # only Call-above crossing
+            s1, s2 = float(strikes_arr[i]), float(strikes_arr[i + 1])
+            d1, d2 = float(diff[i]), float(diff[i + 1])
+            cross_x = s1 + (-d1) / (d2 - d1) * (s2 - s1)
+            fig.add_vline(
+                x=cross_x,
+                line=dict(color="#a78bfa", width=2.0, dash="dot"),
+                annotation_text=f"  OI Cross ₹{cross_x:,.0f}",
+                annotation_position="bottom right",
+                annotation_font=dict(color="#a78bfa", size=9, family="monospace"),
+            )
+
+    fig.update_yaxes(
+        title_text="OI (Lacs)",
+        secondary_y=True,
+        showgrid=False,
+        tickfont=dict(size=9, color="#94a3b8"),
+    )
     # ── 4. UPDATE LAYOUT PROPERTIES ───────────────────────────────────────────
     fig.update_layout(
-        title="📊 Gamma Exposure Profile", 
+        title="📊 Gamma Exposure Profile",
         xaxis_title="Strike",
-        yaxis_title="GEX", 
-        barmode='relative', 
+        barmode='relative',
         hovermode='x unified',
-        template='plotly_dark', 
-        height=500,
-        margin=dict(r=260)  # Preserves space on the right side for the summary table
+        template='plotly_dark',
+        height=520,
+        margin=dict(r=260),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02,
+            xanchor="left", x=0,
+            bgcolor="rgba(0,0,0,0.3)",
+            font=dict(size=9.5, color="#94a3b8"),
+        ),
     )
+    fig.update_yaxes(title_text="GEX", secondary_y=False)
 
     # ── 5. RENDER CONSOLIDATED COMPACT KEY LEVELS SUMMARY TABLE ───────────────
     # Format all numeric metrics safely
