@@ -733,7 +733,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     st.markdown("---")
     tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8 = st.tabs([
         "📊 GEX","📈 OI & Volume","🎲 Greeks",
-        "📉 Charts","🎯 Signals","📋 Chain","ℹ️ Guide","🌅 Pre-Market",
+        "📉 Charts","🎯 Signals","📋 Chain","ℹ️ Guide","🧠 GEX Signals",
     ])
 
     with tab1:
@@ -765,7 +765,10 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             "PCR": matrix_df["pcr_strike"].tolist(),
             "Call Prem": matrix_df["call_ltp"].tolist(),      # CHANGED:  ltp
             "Put Prem": matrix_df["put_ltp"].tolist(),       # CHANGED:  ltp
-            
+            "Call IV%":  matrix_df["call_iv"].tolist(),
+            "Put IV%":   matrix_df["put_iv"].tolist(),
+            "Call Δ":    matrix_df["call_delta"].tolist(),
+            "Put Δ":     matrix_df["put_delta"].tolist(),
             
         }
     
@@ -783,7 +786,10 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             total_pcr,
             pd.NA,  # <── ADDED: Blanks out Call Premium Total
             pd.NA,   # <── ADDED: Blanks out Put Premium Total
-            
+            pd.NA,   # Call IV%
+            pd.NA,   # Put IV%
+            pd.NA,   # Call Δ
+            pd.NA,   # Put Δ
             
         ]
         
@@ -819,7 +825,22 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     
         top1_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(1).index[0]
         top2_call_oi = display_matrix.loc["Call OI (L)", strikes_only].nlargest(2).index[-1]
-  
+
+        # IV% rankings — top-2 highest volatility strikes (most expensive options)
+        top1_call_iv = display_matrix.loc["Call IV%", strikes_only].astype(float).nlargest(1).index[0]
+        top2_call_iv = display_matrix.loc["Call IV%", strikes_only].astype(float).nlargest(2).index[-1]
+        top1_put_iv  = display_matrix.loc["Put IV%",  strikes_only].astype(float).nlargest(1).index[0]
+        top2_put_iv  = display_matrix.loc["Put IV%",  strikes_only].astype(float).nlargest(2).index[-1]
+
+        # Delta rankings
+        # Call Δ: top-2 highest (deepest ITM calls, Δ → 1.0)
+        top1_call_delta = display_matrix.loc["Call Δ", strikes_only].astype(float).nlargest(1).index[0]
+        top2_call_delta = display_matrix.loc["Call Δ", strikes_only].astype(float).nlargest(2).index[-1]
+        
+        # Put Δ: top-2 most negative (deepest ITM puts, Δ → -1.0)
+        top1_put_delta  = display_matrix.loc["Put Δ",  strikes_only].astype(float).nsmallest(1).index[0]
+        top2_put_delta  = display_matrix.loc["Put Δ",  strikes_only].astype(float).nsmallest(2).index[-1]
+
                 
         # String format converter with suffix markers
         display_matrix_fmt = display_matrix.map(lambda x: "—" if pd.isna(x) else f"{x:.2f}")
@@ -839,7 +860,14 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
         display_matrix_fmt.loc["Call OI (L)", top1_call_oi] += " (R)"
         display_matrix_fmt.loc["Call OI (L)", top2_call_oi] += " (R)"
 
-        
+        display_matrix_fmt.loc["Call IV%",  top1_call_iv]   += " ↑"
+        display_matrix_fmt.loc["Call IV%",  top2_call_iv]   += " ↑"
+        display_matrix_fmt.loc["Put IV%",   top1_put_iv]    += " ↑"
+        display_matrix_fmt.loc["Put IV%",   top2_put_iv]    += " ↑"
+        display_matrix_fmt.loc["Call Δ",    top1_call_delta] += " ★"
+        display_matrix_fmt.loc["Call Δ",    top2_call_delta] += " ★"
+        display_matrix_fmt.loc["Put Δ",     top1_put_delta]  += " ★"
+        display_matrix_fmt.loc["Put Δ",     top2_put_delta]  += " ★"
         
         # 9. Styler ────
         # Styler layout generation engine
@@ -865,6 +893,44 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
             styles.loc["Call OI (L)", top1_call_oi] = 'background-color: rgba(245, 158, 11, 0.6); color: white; font-weight: bold;'
             styles.loc["Call OI (L)", top2_call_oi] = 'background-color: rgba(245, 158, 11, 0.35); color: white;'
             
+            # ── Call IV% row: orange (high IV = expensive call) ──────────────
+            styles.loc["Call IV%", top1_call_iv] = 'background-color:rgba(249,115,22,0.70);color:white;font-weight:bold;'
+            styles.loc["Call IV%", top2_call_iv] = 'background-color:rgba(249,115,22,0.40);color:white;'
+
+            # ── Put IV% row: orange (high IV = expensive put) ────────────────
+            styles.loc["Put IV%",  top1_put_iv]  = 'background-color:rgba(249,115,22,0.70);color:white;font-weight:bold;'
+            styles.loc["Put IV%",  top2_put_iv]  = 'background-color:rgba(249,115,22,0.40);color:white;'
+
+            # ── Call Δ row: amber (highest delta = deepest ITM calls) ─────────
+            styles.loc["Call Δ", top1_call_delta] = 'background-color:rgba(251,191,36,0.70);color:black;font-weight:bold;'
+            styles.loc["Call Δ", top2_call_delta] = 'background-color:rgba(251,191,36,0.35);color:black;'
+
+            # ── Put Δ row: cyan (most negative = deepest ITM puts) ────────────
+            styles.loc["Put Δ",  top1_put_delta]  = 'background-color:rgba(6,182,212,0.70);color:white;font-weight:bold;'
+            styles.loc["Put Δ",  top2_put_delta]  = 'background-color:rgba(6,182,212,0.35);color:white;'
+
+            # ── ATM column gradient fill for Delta rows (moneyness visual) ────
+            # Call Δ ranges 0→1: green gradient proportional to delta value
+            # Put Δ ranges -1→0: red gradient proportional to abs(delta)
+            for col in strikes_only:
+                try:
+                    cd = float(display_matrix.loc["Call Δ", col])
+                    if 0 < cd <= 1:
+                        alpha = round(0.08 + cd * 0.30, 2)
+                        styles.loc["Call Δ", col] = (
+                            f"background-color:rgba(34,197,94,{alpha});color:white;"
+                        )
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    pd_val = float(display_matrix.loc["Put Δ", col])
+                    if -1 <= pd_val < 0:
+                        alpha = round(0.08 + abs(pd_val) * 0.30, 2)
+                        styles.loc["Put Δ", col] = (
+                            f"background-color:rgba(239,68,68,{alpha});color:white;"
+                        )
+                except (TypeError, ValueError):
+                    pass
              
             # TOTAL / NET column styling
             styles["TOTAL / NET"] = (
