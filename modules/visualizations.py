@@ -135,7 +135,7 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
             orientation="h", yanchor="bottom", y=1.02,
             xanchor="left", x=0,
             bgcolor="rgba(0,0,0,0.3)",
-            font=dict(size=9.5, color="#94a3b8"),
+            font=dict(size=10, color="#121314"),
         ),
     )
     fig.update_yaxes(title_text="GEX", secondary_y=False)
