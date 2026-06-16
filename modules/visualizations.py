@@ -110,10 +110,10 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
             cross_x = s1 + (-d1) / (d2 - d1) * (s2 - s1)
             fig.add_vline(
                 x=cross_x,
-                line=dict(color="#a78bfa", width=2.0, dash="dot"),
+                line=dict(color="#514d5c", width=2.0, dash="dot"),
                 annotation_text=f"  OI Cross ₹{cross_x:,.0f}",
                 annotation_position="bottom right",
-                annotation_font=dict(color="#a78bfa", size=9, family="monospace"),
+                annotation_font=dict(color="#514d5c", size=10, family="monospace"),
             )
 
     fig.update_yaxes(
