@@ -1841,459 +1841,612 @@ GEX levels shift when OI changes (slowly); GEX *magnitude* shifts when spot move
         """)
     
     with tab8:
-        st.subheader("🌅 Pre-Market Option Pricer — Expected Prices at 9:15 Open")
+        st.subheader("🧠 GEX Signals — Dealer vs Retail Game Theory & Conditional Probability")
 
-        from modules.premarket_pricer import (
-            get_premarket_spot,
-            calculate_premarket_prices,
-            get_premarket_summary,
-        )
+        # ═══════════════════════════════════════════════════════════════════
+        # DERIVE SIGNALS DIRECTLY FROM THE LIVE MATRIX DATA
+        # ═══════════════════════════════════════════════════════════════════
+        _gdf = gex_df.sort_values("strike").copy()
+        _atm_idx   = (_gdf["strike"] - spot_price).abs().idxmin()
+        _atm_row   = _gdf.loc[_atm_idx]
+        _atm_strike = int(_atm_row["strike"])
 
-        # ─────────────────────────────────────────────────────────────────────
-        # INFO BANNER
-        # ─────────────────────────────────────────────────────────────────────
-        st.markdown("""
-        <div style="
-            background: linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95));
-            border: 1px solid rgba(99,102,241,0.4);
-            border-left: 4px solid #818cf8;
-            border-radius: 8px;
-            padding: 14px 18px;
-            margin-bottom: 16px;
-            font-size: 13px;
-        ">
-            <b style="color:#818cf8;">🕐 How This Works</b><br>
-            <span style="color:#cbd5e1;">
-            NSE pre-open runs <b>9:00 → 9:08 AM</b>. At ~9:07 AM, the exchange
-            publishes the <b>Indicative Equilibrium Price (IEP)</b> — the expected opening spot.<br>
-            This tool uses that IEP + <b>last session's IV</b> + Black-Scholes to calculate
-            the expected option premium for every strike before 9:15 opens.
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
+        _call_wall_strike = int(gamma_levels.get("max_call_oi_strike", spot_price))
+        _put_wall_strike  = int(gamma_levels.get("max_put_oi_strike",  spot_price))
+        _gflip  = float(gamma_levels.get("gamma_flip", spot_price))
+        _mp     = float(gamma_levels.get("max_pain",   spot_price))
+        _net_gx = float(gamma_levels.get("total_gex",  0))
+        _pcr    = float(gamma_levels.get("pcr",        1.0))
+        _c_wall_gex = float(_gdf.loc[_gdf["call_gex"].idxmin(), "strike"])
+        _p_wall_gex = float(_gdf.loc[_gdf["put_gex"].idxmax(),  "strike"])
 
-        # ─────────────────────────────────────────────────────────────────────
-        # CONTROLS
-        # ─────────────────────────────────────────────────────────────────────
-        ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([2, 1, 1])
+        # ATM Greeks from matrix
+        _atm_call_iv    = float(_atm_row.get("call_iv",    15.0))
+        _atm_put_iv     = float(_atm_row.get("put_iv",     15.0))
+        _atm_call_delta = float(_atm_row.get("call_delta",  0.5))
+        _atm_put_delta  = float(_atm_row.get("put_delta",  -0.5))
+        _atm_gamma      = float(_atm_row.get("call_gamma",  0.0))
+        _iv_skew        = _atm_put_iv - _atm_call_iv   # +ve = put premium
 
-        with ctrl_c1:
-            # Manual spot override — useful for "what if spot opens at X"
-            manual_spot = st.number_input(
-                "Pre-Market Spot (IEP) — auto-fetched or override manually",
-                min_value=1000.0,
-                max_value=200000.0,
-                value=float(spot_price),
-                step=float(si),
-                format="%.2f",
-                help="Auto-fetched from Kite at 9:07 AM. You can also type any value to run a What-If scenario.",
-                key="pm_spot_input",
-            )
+        _above_flip = spot_price >= _gflip
+        _above_mp   = spot_price >= _mp
+        _above_cwall= spot_price >= _call_wall_strike
+        _above_pwall= spot_price >= _put_wall_strike
 
-        with ctrl_c2:
-            # Fetch live IEP from Kite
-            if st.button(
-                "🔄 Fetch Live IEP",
-                use_container_width=True,
-                type="primary",
-                key="pm_fetch_btn",
-                disabled=(not st.session_state.kite_authenticated),
-                help="Fetch NSE Indicative Equilibrium Price (9:00–9:08 AM)",
-            ):
-                km = st.session_state.kite_manager
-                if km:
-                    with st.spinner("Fetching pre-market spot…"):
-                        pm_data = get_premarket_spot(km, symbol)
-                    if pm_data["spot"]:
-                        st.session_state["pm_fetched_spot"] = pm_data["spot"]
-                        st.session_state["pm_prev_close"]   = pm_data["prev_close"]
-                        st.session_state["pm_gap"]          = pm_data["gap"]
-                        st.session_state["pm_gap_pct"]      = pm_data["gap_pct"]
-                        st.session_state["pm_timestamp"]    = pm_data["timestamp"]
-                        st.success(f"IEP: ₹{pm_data['spot']:,.2f}  ({pm_data['gap_pct']:+.2f}%)")
-                    else:
-                        st.error(f"Fetch failed: {pm_data['error']}")
+        _dist_to_cwall_pct = (_call_wall_strike - spot_price) / spot_price * 100
+        _dist_to_pwall_pct = (spot_price - _put_wall_strike) / spot_price * 100
+        _dist_to_flip_pct  = (spot_price - _gflip) / spot_price * 100
+        _dist_to_mp_pct    = (spot_price - _mp) / spot_price * 100
 
-        with ctrl_c3:
-            st.metric(
-                "📌 Last Fetched IEP",
-                f"₹{st.session_state.get('pm_fetched_spot', spot_price):,.2f}",
-                delta=f"{st.session_state.get('pm_gap_pct', 0):+.2f}%",
-            )
-
-        # Use manual input or last fetched IEP
-        pm_spot = manual_spot
-
-        st.markdown("---")
-
-        # ─────────────────────────────────────────────────────────────────────
-        # CALCULATE EXPECTED PRICES
-        # ─────────────────────────────────────────────────────────────────────
-        expiry_date = st.session_state.selected_expiry
-
-        pm_df = calculate_premarket_prices(
-            gex_df, pm_spot, expiry_date,
-            st.session_state.risk_free_rate_val,
-        )
-
-        ohlc_data  = st.session_state.spot_ohlc or {}
-        prev_close = ohlc_data.get("close", spot_price)
-        summary    = get_premarket_summary(pm_df, pm_spot, prev_close, expiry_date)
-
-        # ─────────────────────────────────────────────────────────────────────
-        # SECTION 1: GAP BANNER
-        # ─────────────────────────────────────────────────────────────────────
-        gap     = pm_spot - prev_close
-        gap_pct = (gap / prev_close * 100) if prev_close else 0
-        gap_dir = "GAP UP ▲" if gap > 0 else "GAP DOWN ▼" if gap < 0 else "FLAT ●"
-        gap_col = "#22c55e" if gap > 0 else "#ef4444" if gap < 0 else "#94a3b8"
+        # ── 1. REGIME BANNER ──────────────────────────────────────────────
+        if _net_gx > 0 and _above_flip:
+            _regime_lbl = "🟢 POSITIVE GAMMA — Dealers Stabilising (Mean-Reversion Regime)"
+            _regime_col = "#22c55e"
+            _regime_bg  = "rgba(34,197,94,0.08)"
+        elif _net_gx < 0 and not _above_flip:
+            _regime_lbl = "🔴 NEGATIVE GAMMA — Dealers Amplifying (Trending Regime)"
+            _regime_col = "#ef4444"
+            _regime_bg  = "rgba(239,68,68,0.08)"
+        elif _net_gx > 0 and not _above_flip:
+            _regime_lbl = "🟡 MIXED — Positive GEX but Below Flip: Caution Zone"
+            _regime_col = "#eab308"
+            _regime_bg  = "rgba(234,179,8,0.08)"
+        else:
+            _regime_lbl = "🟠 TRANSITIONAL — Negative GEX Above Flip: Unstable"
+            _regime_col = "#f97316"
+            _regime_bg  = "rgba(249,115,22,0.08)"
 
         st.markdown(f"""
-        <div style="
-            background: {gap_col}18;
-            border: 2px solid {gap_col};
-            border-radius: 10px;
-            padding: 18px 22px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        ">
-            <div>
-                <div style="font-size:22px; font-weight:bold; color:{gap_col};">
-                    {symbol} &nbsp; {gap_dir}
-                </div>
-                <div style="font-size:13px; color:#94a3b8; margin-top:4px;">
-                    Pre-Market IEP: <b style="color:white;">₹{pm_spot:,.2f}</b> &nbsp;|&nbsp;
-                    Prev Close: <b style="color:white;">₹{prev_close:,.2f}</b> &nbsp;|&nbsp;
-                    Gap: <b style="color:{gap_col};">{gap:+.2f} pts ({gap_pct:+.2f}%)</b>
-                </div>
-            </div>
-            <div style="text-align:right; font-size:12px; color:#64748b;">
-                Using last session IV<br>
-                Expiry: {expiry_date}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+<div style="background:{_regime_bg};border:2px solid {_regime_col};
+border-radius:10px;padding:16px 20px;margin-bottom:12px;">
+<span style="font-size:1.15rem;font-weight:bold;color:{_regime_col};">{_regime_lbl}</span><br>
+<span style="font-size:0.80rem;color:#94a3b8;font-family:monospace;">
+Spot ₹{spot_price:,.0f} &nbsp;|&nbsp;
+Flip ₹{_gflip:,.0f} ({_dist_to_flip_pct:+.2f}%) &nbsp;|&nbsp;
+Max Pain ₹{_mp:,.0f} ({_dist_to_mp_pct:+.2f}%) &nbsp;|&nbsp;
+PCR {_pcr:.2f} &nbsp;|&nbsp;
+ATM IV Skew: {_iv_skew:+.2f}% &nbsp;|&nbsp;
+ATM Γ: {_atm_gamma:.6f}
+</span>
+</div>""", unsafe_allow_html=True)
 
-        # ─────────────────────────────────────────────────────────────────────
-        # SECTION 2: ATM METRICS (5 key numbers to know before 9:15)
-        # ─────────────────────────────────────────────────────────────────────
-        st.markdown("### 📊 ATM Snapshot — What To Expect at 9:15")
-
-        atm_strike = summary.get("atm_strike", int(get_atm_strike(pm_spot, si)))
-
-        m1, m2, m3, m4, m5 = st.columns(5)
-
-        m1.metric(
-            "⭐ ATM Strike",
-            f"₹{atm_strike:,}",
-            help="Strike closest to the pre-market IEP",
-        )
-        m2.metric(
-            "📞 ATM Call (exp)",
-            f"₹{summary.get('atm_call_exp', 0):.2f}",
-            delta=f"{summary.get('atm_call_chg', 0):+.2f}",
-            help=f"Previous close: ₹{summary.get('atm_call_prev', 0):.2f}",
-        )
-        m3.metric(
-            "📉 ATM Put (exp)",
-            f"₹{summary.get('atm_put_exp', 0):.2f}",
-            delta=f"{summary.get('atm_put_chg', 0):+.2f}",
-            help=f"Previous close: ₹{summary.get('atm_put_prev', 0):.2f}",
-        )
-        m4.metric(
-            "🔷 Straddle Cost",
-            f"₹{summary.get('atm_straddle_exp', 0):.2f}",
-            delta=f"{summary.get('atm_straddle_chg', 0):+.2f}  ({summary.get('atm_straddle_chg_pct', 0):+.1f}%)",
-            help=f"Previous straddle: ₹{summary.get('atm_straddle_prev', 0):.2f}",
-        )
-        m5.metric(
-            "📐 Breakeven Zone",
-            f"₹{int(summary.get('breakeven_dn', 0)):,} — ₹{int(summary.get('breakeven_up', 0)):,}",
-            help="ATM strike ± expected straddle cost",
-        )
+        # ── Quick metrics ─────────────────────────────────────────────────
+        qc1,qc2,qc3,qc4,qc5,qc6 = st.columns(6)
+        qc1.metric("Γ Flip", f"₹{_gflip:,.0f}", delta=f"{_dist_to_flip_pct:+.2f}%")
+        qc2.metric("Max Pain", f"₹{_mp:,.0f}", delta=f"{_dist_to_mp_pct:+.2f}%")
+        qc3.metric("Call Wall (OI)", f"₹{_call_wall_strike:,}", delta=f"{_dist_to_cwall_pct:+.2f}%")
+        qc4.metric("Put Wall (OI)", f"₹{_put_wall_strike:,}", delta=f"{-_dist_to_pwall_pct:+.2f}%")
+        qc5.metric("Call Γ-Wall", f"₹{_c_wall_gex:,.0f}")
+        qc6.metric("Put Γ-Floor", f"₹{_p_wall_gex:,.0f}")
 
         st.markdown("---")
 
-        # ─────────────────────────────────────────────────────────────────────
-        # SECTION 3: MOVERS — Top Gainers / Losers
-        # ─────────────────────────────────────────────────────────────────────
-        st.markdown("### 🚀 Biggest Movers at Expected Open")
+        # ═══════════════════════════════════════════════════════════════════
+        # SECTION 1: GAME THEORY — DEALER vs RETAIL/INSTITUTIONAL
+        # ═══════════════════════════════════════════════════════════════════
+        st.markdown("## 🎯 Section 1: Game Theory — The Dealer vs. Market Participant Game")
+        st.markdown("""
+> **Core Insight:** Dealers are *not* directional players. They are **forced hedgers**.
+> Every time retail/institutions buy options, dealers take the other side and MUST hedge
+> their delta. This creates **predictable mechanical flows** at key GEX levels.
+""")
 
-        mv1, mv2, mv3, mv4 = st.columns(4)
+        # Build the game theory table from live matrix data
+        _gt_data = []
 
-        mv1.metric(
-            "🟢 Top Call Gainer",
-            f"₹{summary.get('top_call_gainer_strike', 0):,}",
-            delta=f"{summary.get('top_call_gainer_pct', 0):+.1f}%",
-            help="Strike where call premium rises most",
-        )
-        mv2.metric(
-            "🔴 Top Call Loser",
-            f"₹{summary.get('top_call_loser_strike', 0):,}",
-            delta=f"{summary.get('top_call_loser_pct', 0):+.1f}%",
-            help="Strike where call premium drops most",
-        )
-        mv3.metric(
-            "🟢 Top Put Gainer",
-            f"₹{summary.get('top_put_gainer_strike', 0):,}",
-            delta=f"{summary.get('top_put_gainer_pct', 0):+.1f}%",
-            help="Strike where put premium rises most",
-        )
-        mv4.metric(
-            "🔴 Top Put Loser",
-            f"₹{summary.get('top_put_loser_strike', 0):,}",
-            delta=f"{summary.get('top_put_loser_pct', 0):+.1f}%",
-            help="Strike where put premium drops most",
-        )
+        # Row 1: Call Wall — Dealer short calls
+        _cw_oi   = float(_gdf.loc[_gdf["strike"]==_call_wall_strike, "call_oi"].values[0]
+                         if _call_wall_strike in _gdf["strike"].values else 0)
+        _cw_gex  = float(_gdf.loc[_gdf["strike"]==_call_wall_strike, "call_gex"].values[0]
+                         if _call_wall_strike in _gdf["strike"].values else 0)
+        _cw_iv   = float(_gdf.loc[_gdf["strike"]==_call_wall_strike, "call_iv"].values[0]
+                         if _call_wall_strike in _gdf["strike"].values else 0)
+        _cw_delta= float(_gdf.loc[_gdf["strike"]==_call_wall_strike, "call_delta"].values[0]
+                         if _call_wall_strike in _gdf["strike"].values else 0)
+        _gt_data.append({
+            "Level": f"🔴 Call OI Wall ₹{_call_wall_strike:,}",
+            "Who Controls": "Dealers SHORT calls / Retail LONG calls",
+            "Dealer Action": f"Sell futures as price rises toward ₹{_call_wall_strike:,}",
+            "Market Effect": "Rally decelerates, IV crushed, call Δ expands → dealer selling accelerates",
+            "OI (L)": f"{_cw_oi/1e5:.1f}",
+            "Call IV%": f"{_cw_iv:.1f}",
+            "Call Δ": f"{_cw_delta:.3f}",
+            "GEX (Cr)": f"{_cw_gex/1e7:.2f}",
+            "Dist %": f"{_dist_to_cwall_pct:+.2f}%",
+            "Signal": "📉 Resistance / Sell rally" if _dist_to_cwall_pct > 0 else "⚠️ Already through — short squeeze risk",
+        })
 
-        st.markdown("---")
+        # Row 2: Put Wall — Dealer short puts
+        _pw_oi   = float(_gdf.loc[_gdf["strike"]==_put_wall_strike, "put_oi"].values[0]
+                         if _put_wall_strike in _gdf["strike"].values else 0)
+        _pw_gex  = float(_gdf.loc[_gdf["strike"]==_put_wall_strike, "put_gex"].values[0]
+                         if _put_wall_strike in _gdf["strike"].values else 0)
+        _pw_iv   = float(_gdf.loc[_gdf["strike"]==_put_wall_strike, "put_iv"].values[0]
+                         if _put_wall_strike in _gdf["strike"].values else 0)
+        _pw_delta= float(_gdf.loc[_gdf["strike"]==_put_wall_strike, "put_delta"].values[0]
+                         if _put_wall_strike in _gdf["strike"].values else 0)
+        _gt_data.append({
+            "Level": f"🟢 Put OI Wall ₹{_put_wall_strike:,}",
+            "Who Controls": "Dealers SHORT puts / Institutions LONG puts",
+            "Dealer Action": f"Buy futures as price falls toward ₹{_put_wall_strike:,}",
+            "Market Effect": "Dip absorbed, put Δ expands → dealer buying accelerates → floor",
+            "OI (L)": f"{_pw_oi/1e5:.1f}",
+            "Call IV%": "—",
+            "Call Δ": "—",
+            "GEX (Cr)": f"{_pw_gex/1e7:.2f}",
+            "Dist %": f"{-_dist_to_pwall_pct:+.2f}%",
+            "Signal": "📈 Support / Buy dip" if _above_pwall else "⚠️ Already below — put wall broken",
+        })
 
-        # ─────────────────────────────────────────────────────────────────────
-        # SECTION 4: FULL EXPECTED PRICE TABLE
-        # ─────────────────────────────────────────────────────────────────────
-        st.markdown("### 📋 Expected Option Prices at 9:15 Open — Full Chain")
+        # Row 3: Gamma Flip
+        _gt_data.append({
+            "Level": f"🔄 Gamma Flip ₹{_gflip:,.0f}",
+            "Who Controls": "ALL dealers — regime boundary",
+            "Dealer Action": "ABOVE: sell rallies / buy dips  |  BELOW: buy rallies / sell dips",
+            "Market Effect": "Above = mean-reversion / Below = trend amplification",
+            "OI (L)": "—",
+            "Call IV%": "—",
+            "Call Δ": "—",
+            "GEX (Cr)": "0.00",
+            "Dist %": f"{_dist_to_flip_pct:+.2f}%",
+            "Signal": "🟢 Stable regime" if _above_flip else "🔴 Volatile regime — trending",
+        })
 
-        # Build display dataframe
-        tbl = pm_df[[
-            "strike", "moneyness",
-            "prev_call", "exp_call", "call_chg", "call_chg_pct",
-            "prev_put",  "exp_put",  "put_chg",  "put_chg_pct",
-            "straddle_prev", "straddle_exp", "straddle_chg",
-            "signal",
-        ]].copy()
+        # Row 4: Max Pain
+        _gt_data.append({
+            "Level": f"🎯 Max Pain ₹{_mp:,.0f}",
+            "Who Controls": "Option writers (banks/MMs) — gravity pull near expiry",
+            "Dealer Action": "Pin price near max pain via delta hedging in final week",
+            "Market Effect": "Strong gravitational pull when DTE < 7, weakens with time",
+            "OI (L)": "—",
+            "Call IV%": "—",
+            "Call Δ": "—",
+            "GEX (Cr)": "—",
+            "Dist %": f"{_dist_to_mp_pct:+.2f}%",
+            "Signal": ("🎯 Pin likely — <2% away" if abs(_dist_to_mp_pct) < 2 else
+                       "🟡 Moderate pull" if abs(_dist_to_mp_pct) < 5 else
+                       "⬜ Too far for pin"),
+        })
 
-        tbl.columns = [
-            "Strike", "Type",
-            "Call (Prev)", "Call (Exp)", "Call Δ", "Call Δ%",
-            "Put (Prev)",  "Put (Exp)",  "Put Δ",  "Put Δ%",
-            "Straddle Prev", "Straddle Exp", "Straddle Δ",
-            "Signal",
-        ]
+        # Row 5: Call GEX Wall (Gamma-based resistance)
+        _cg_oi = float(_gdf.loc[_gdf["strike"]==_c_wall_gex, "call_oi"].values[0]
+                       if _c_wall_gex in _gdf["strike"].values else 0)
+        _cg_iv = float(_gdf.loc[_gdf["strike"]==_c_wall_gex, "call_iv"].values[0]
+                       if _c_wall_gex in _gdf["strike"].values else 0)
+        _gt_data.append({
+            "Level": f"⚡ Call GEX Wall ₹{_c_wall_gex:,.0f}",
+            "Who Controls": "Dealers with LARGEST short-call gamma book",
+            "Dealer Action": "Maximum delta-selling into any rally here; gamma peaks",
+            "Market Effect": "Hardest ceiling — gamma crush zone; IV collapses if breached",
+            "OI (L)": f"{_cg_oi/1e5:.1f}",
+            "Call IV%": f"{_cg_iv:.1f}",
+            "Call Δ": "—",
+            "GEX (Cr)": f"{_gdf['call_gex'].min()/1e7:.2f}",
+            "Dist %": f"{(_c_wall_gex - spot_price)/spot_price*100:+.2f}%",
+            "Signal": "🔴 Gamma ceiling" if _c_wall_gex > spot_price else "⚠️ Price above gamma wall",
+        })
 
-        # Format display
-        tbl_fmt = tbl.copy()
-        tbl_fmt["Strike"]       = tbl_fmt["Strike"].apply(lambda x: f"₹{x:,}")
-        tbl_fmt["Call (Prev)"]  = tbl_fmt["Call (Prev)"].apply(lambda x: f"₹{x:.2f}")
-        tbl_fmt["Call (Exp)"]   = tbl_fmt["Call (Exp)"].apply(lambda x: f"₹{x:.2f}")
-        tbl_fmt["Call Δ"]       = tbl_fmt["Call Δ"].apply(lambda x: f"{x:+.2f}")
-        tbl_fmt["Call Δ%"]      = tbl_fmt["Call Δ%"].apply(lambda x: f"{x:+.1f}%")
-        tbl_fmt["Put (Prev)"]   = tbl_fmt["Put (Prev)"].apply(lambda x: f"₹{x:.2f}")
-        tbl_fmt["Put (Exp)"]    = tbl_fmt["Put (Exp)"].apply(lambda x: f"₹{x:.2f}")
-        tbl_fmt["Put Δ"]        = tbl_fmt["Put Δ"].apply(lambda x: f"{x:+.2f}")
-        tbl_fmt["Put Δ%"]       = tbl_fmt["Put Δ%"].apply(lambda x: f"{x:+.1f}%")
-        tbl_fmt["Straddle Prev"]= tbl_fmt["Straddle Prev"].apply(lambda x: f"₹{x:.2f}")
-        tbl_fmt["Straddle Exp"] = tbl_fmt["Straddle Exp"].apply(lambda x: f"₹{x:.2f}")
-        tbl_fmt["Straddle Δ"]   = tbl_fmt["Straddle Δ"].apply(lambda x: f"{x:+.2f}")
+        _gt_df = pd.DataFrame(_gt_data)
+        _display_cols = ["Level","Who Controls","Dealer Action","Market Effect",
+                         "OI (L)","Call IV%","Call Δ","GEX (Cr)","Dist %","Signal"]
 
-        # Styler
-        def _style_pm_table(row):
-            styles = [""] * len(row)
-            col_names = list(tbl_fmt.columns)
-
-            # ATM row highlight
-            if row["Type"] == "ATM":
-                return ["background-color:rgba(250,204,21,0.15); border:1px solid #fbbf24;"] * len(row)
-
-            # Call delta column coloring
-            try:
-                ci = col_names.index("Call Δ")
-                call_chg_val = tbl.loc[
-                    tbl_fmt.index[tbl_fmt.index == row.name], "Call Δ"
-                ].values[0]
-                if call_chg_val > 50:
-                    styles[ci] = "background-color:rgba(34,197,94,0.6);color:white;font-weight:bold;"
-                elif call_chg_val > 20:
-                    styles[ci] = "background-color:rgba(34,197,94,0.35);color:white;"
-                elif call_chg_val > 0:
-                    styles[ci] = "background-color:rgba(34,197,94,0.15);color:white;"
-                elif call_chg_val < -50:
-                    styles[ci] = "background-color:rgba(239,68,68,0.6);color:white;font-weight:bold;"
-                elif call_chg_val < -20:
-                    styles[ci] = "background-color:rgba(239,68,68,0.35);color:white;"
-                elif call_chg_val < 0:
-                    styles[ci] = "background-color:rgba(239,68,68,0.15);color:white;"
-            except Exception:
-                pass
-
-            # Put delta column coloring
-            try:
-                pi = col_names.index("Put Δ")
-                put_chg_val = tbl.loc[
-                    tbl_fmt.index[tbl_fmt.index == row.name], "Put Δ"
-                ].values[0]
-                if put_chg_val > 50:
-                    styles[pi] = "background-color:rgba(34,197,94,0.6);color:white;font-weight:bold;"
-                elif put_chg_val > 20:
-                    styles[pi] = "background-color:rgba(34,197,94,0.35);color:white;"
-                elif put_chg_val > 0:
-                    styles[pi] = "background-color:rgba(34,197,94,0.15);color:white;"
-                elif put_chg_val < -50:
-                    styles[pi] = "background-color:rgba(239,68,68,0.6);color:white;font-weight:bold;"
-                elif put_chg_val < -20:
-                    styles[pi] = "background-color:rgba(239,68,68,0.35);color:white;"
-                elif put_chg_val < 0:
-                    styles[pi] = "background-color:rgba(239,68,68,0.15);color:white;"
-            except Exception:
-                pass
-
-            return styles
+        def _style_gt(row):
+            s = [""] * len(row)
+            lbl = row["Level"]
+            if "Call OI Wall" in lbl:
+                s[0] = "background-color:rgba(239,68,68,0.20);font-weight:bold;"
+            elif "Put OI Wall" in lbl:
+                s[0] = "background-color:rgba(34,197,94,0.20);font-weight:bold;"
+            elif "Gamma Flip" in lbl:
+                s[0] = "background-color:rgba(234,179,8,0.20);font-weight:bold;"
+            elif "Max Pain" in lbl:
+                s[0] = "background-color:rgba(192,132,252,0.20);font-weight:bold;"
+            elif "GEX Wall" in lbl:
+                s[0] = "background-color:rgba(249,115,22,0.20);font-weight:bold;"
+            sig = str(row["Signal"])
+            si  = list(row.index).index("Signal")
+            if "📉" in sig or "🔴" in sig:
+                s[si] = "background-color:rgba(239,68,68,0.25);font-weight:bold;"
+            elif "📈" in sig or "🟢" in sig:
+                s[si] = "background-color:rgba(34,197,94,0.25);font-weight:bold;"
+            elif "⚠️" in sig:
+                s[si] = "background-color:rgba(249,115,22,0.35);font-weight:bold;"
+            elif "🎯" in sig:
+                s[si] = "background-color:rgba(192,132,252,0.35);font-weight:bold;"
+            return s
 
         st.dataframe(
-            tbl_fmt.style.apply(_style_pm_table, axis=1),
-            use_container_width=True,
-            height=420,
+            _gt_df[_display_cols].style.apply(_style_gt, axis=1),
+            use_container_width=True, hide_index=True, height=240,
+        )
+
+        # ── Game-theory narrative ─────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("### 🃏 The Active Game Right Now")
+
+        _g_narrative = []
+
+        if _dist_to_cwall_pct > 0 and _dist_to_cwall_pct < 3:
+            _g_narrative.append(f"""
+**🎮 Approaching Call Wall ({_dist_to_cwall_pct:.2f}% away)**
+Market is in the *final approach zone*. Dealers are short {_cw_oi/1e5:.1f}L calls at ₹{_call_wall_strike:,}.
+As price creeps up:
+- Dealer delta-selling increases exponentially (gamma effect)
+- Each ₹50 rally → dealers sell **{format_number(abs(_cw_gex)/1e7 * _cw_delta * 50):.0f}** in futures
+- **Retail bulls** are fighting a mechanical selling machine
+- **Institutional shorts** at ₹{_call_wall_strike:,} are gaining delta advantage
+- **Winning move:** Fade the wall unless PCR drops below 0.7 (indicating wall capitulation)
+""")
+
+        if _dist_to_pwall_pct > 0 and _dist_to_pwall_pct < 3:
+            _g_narrative.append(f"""
+**🎮 Approaching Put Wall ({_dist_to_pwall_pct:.2f}% below)**
+Dealers are short {_pw_oi/1e5:.1f}L puts at ₹{_put_wall_strike:,}. As price approaches:
+- Dealer delta-buying activates (they must go long to stay neutral)
+- **Institutional long puts** are gaining value rapidly
+- **Retail call sellers** face rising margin as put IV spikes
+- **Winning move:** Buy dip near ₹{_put_wall_strike:,} with tight SL below
+""")
+
+        if abs(_dist_to_flip_pct) < 1.5:
+            _g_narrative.append(f"""
+**⚡ FLIP ZONE ALERT ({_dist_to_flip_pct:+.2f}% from flip)**
+Market is at the *gamma flip boundary* ₹{_gflip:,.0f}. This is the most dangerous zone:
+- A ₹{abs(spot_price - _gflip):.0f} move determines whether dealers STABILISE or AMPLIFY
+- **If spot drops below ₹{_gflip:,.0f}:** Dealers flip from buyers-on-dips → sellers-on-dips → accelerating move
+- **If spot holds above ₹{_gflip:,.0f}:** Mean reversion continues, range stays intact
+- **Winning move:** Wait for confirmation — do NOT trade against momentum at this level
+""")
+
+        if not _g_narrative:
+            _g_narrative.append(f"""
+**🎮 Mid-Range: No Immediate Trigger Zone**
+Spot ₹{spot_price:,.0f} is between key levels:
+- Call Wall: {_dist_to_cwall_pct:+.2f}% away · Put Wall: {-_dist_to_pwall_pct:+.2f}% away · Flip: {_dist_to_flip_pct:+.2f}% away
+- Market in **neutral dealer zone** — mechanical flows are balanced
+- Wait for a level test before entering structural trades
+""")
+
+        for _g in _g_narrative:
+            st.markdown(_g)
+
+        st.markdown("---")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # SECTION 2: CONDITIONAL PROBABILITY — IF-THEN RISK ENGINE
+        # ═══════════════════════════════════════════════════════════════════
+        st.markdown("## 🔬 Section 2: Conditional Probability — The If-Then Risk Engine")
+        st.markdown("""
+> **Core Logic:** GEX levels create *regime-conditional* probabilities.
+> Once you know where spot is relative to Call Wall / Flip / Put Wall,
+> you can assign mechanical probabilities to the next move. These are NOT
+> statistical — they are **structural** (driven by dealer hedge obligations).
+""")
+
+        # Build conditional probability table
+        _cp_rows = []
+
+        # Scenario A: Rally to Call Wall
+        _rally_dist = _call_wall_strike - spot_price
+        _rally_pct  = _rally_dist / spot_price * 100
+        _cp_rows.append({
+            "Scenario": f"IF spot rallies to Call Wall ₹{_call_wall_strike:,}",
+            "Trigger": f"Price moves +{_rally_pct:.2f}%",
+            "Dealer Response": "Sell futures (delta hedge short calls)",
+            "Prob of Stall": "High (75–85%)" if _cw_oi > 5e6 else "Moderate (50–65%)",
+            "IV Effect": "Call IV crushed (-2 to -5%) / Put IV rises (fear)",
+            "Breakout Condition": f"PCR < 0.7 AND Call OI builds >₹{_call_wall_strike+50:,}",
+            "Best Trade": "Bear Call Spread at wall / Iron Condor upper leg",
+            "Risk": "Short gamma squeeze if wall breaks — exit immediately",
+        })
+
+        # Scenario B: Drop to Put Wall
+        _drop_dist = spot_price - _put_wall_strike
+        _drop_pct  = _drop_dist / spot_price * 100
+        _cp_rows.append({
+            "Scenario": f"IF spot drops to Put Wall ₹{_put_wall_strike:,}",
+            "Trigger": f"Price moves -{_drop_pct:.2f}%",
+            "Dealer Response": "Buy futures (delta hedge short puts)",
+            "Prob of Stall": "High (70–80%)" if _pw_oi > 5e6 else "Moderate (45–60%)",
+            "IV Effect": "Put IV spike (+3 to +8%) / Straddle cost expands",
+            "Breakout Condition": f"Put OI collapses at ₹{_put_wall_strike:,} AND PCR > 1.4",
+            "Best Trade": "Bull Put Spread at wall / Buy ATM call on touch",
+            "Risk": "Wall breaks → next put wall is the target",
+        })
+
+        # Scenario C: Gamma Flip break
+        _flip_dir = "DOWN" if _above_flip else "UP"
+        _flip_move = abs(spot_price - _gflip)
+        _cp_rows.append({
+            "Scenario": f"IF spot {'drops below' if _above_flip else 'reclaims'} Flip ₹{_gflip:,.0f}",
+            "Trigger": f"Price moves {'-' if _above_flip else '+'}{_flip_move/spot_price*100:.2f}%",
+            "Dealer Response": "REGIME CHANGE — dealers flip hedging direction",
+            "Prob of Stall": "Low (15–25%) — momentum trades trigger",
+            "IV Effect": "VIX spike expected (+15–30%); all IVs expand",
+            "Breakout Condition": "Already in breakout if flip broken",
+            "Best Trade": ("Buy ATM Put + Short OTM Call (bear spread)" if _above_flip
+                           else "Buy ATM Call + Short OTM Put (bull spread)"),
+            "Risk": "False breakout (price reclaims flip same session) — whipsaw",
+        })
+
+        # Scenario D: Max Pain pin
+        _mp_dist = abs(spot_price - _mp)
+        _mp_pct  = _mp_dist / spot_price * 100
+        _cp_rows.append({
+            "Scenario": f"IF spot drifts to Max Pain ₹{_mp:,.0f} near expiry",
+            "Trigger": f"{'Already at' if _mp_pct < 1 else f'±{_mp_pct:.2f}% move needed'}",
+            "Dealer Response": "Option writers delta-hedge to pin near max pain",
+            "Prob of Stall": ("Very High (85–95%) if DTE < 3" if _mp_pct < 2 else
+                              "High (65–75%) if DTE < 7" if _mp_pct < 4 else
+                              "Moderate (40–55%) if DTE > 7"),
+            "IV Effect": "IV crushed as theta decay accelerates near expiry",
+            "Breakout Condition": "Large unexpected event (earnings, macro shock)",
+            "Best Trade": "Short Straddle at Max Pain if DTE < 5",
+            "Risk": "Event risk voids max pain gravity entirely",
+        })
+
+        _cp_df = pd.DataFrame(_cp_rows)
+
+        def _style_cp(row):
+            s = [""] * len(row)
+            sc = str(row["Scenario"])
+            p  = str(row["Prob of Stall"])
+            pi = list(row.index).index("Prob of Stall")
+            if "Call Wall" in sc:
+                s[0] = "background-color:rgba(239,68,68,0.18);font-weight:bold;"
+            elif "Put Wall" in sc:
+                s[0] = "background-color:rgba(34,197,94,0.18);font-weight:bold;"
+            elif "Flip" in sc:
+                s[0] = "background-color:rgba(234,179,8,0.18);font-weight:bold;"
+            elif "Max Pain" in sc:
+                s[0] = "background-color:rgba(192,132,252,0.18);font-weight:bold;"
+            if "Very High" in p or "High" in p:
+                s[pi] = "background-color:rgba(34,197,94,0.30);font-weight:bold;"
+            elif "Low" in p:
+                s[pi] = "background-color:rgba(239,68,68,0.30);font-weight:bold;"
+            return s
+
+        st.dataframe(
+            _cp_df.style.apply(_style_cp, axis=1),
+            use_container_width=True, hide_index=True, height=200,
+        )
+
+        # ── Conditional signal readout ────────────────────────────────────
+        st.markdown("---")
+        st.markdown("### ⚡ Live Conditional Signals (Based on Current Position)")
+
+        _live_signals = []
+
+        # Signal 1: Regime
+        if _above_flip and _net_gx > 0:
+            _live_signals.append(("🟢 REGIME: Positive Gamma",
+                "STABILISING — Dealers buy dips / sell rallies. "
+                "Favour range strategies. Iron Condor, Short Strangle.",
+                "rgba(34,197,94,0.15)", "#22c55e"))
+        else:
+            _live_signals.append(("🔴 REGIME: Negative Gamma",
+                "AMPLIFYING — Dealers chase moves. "
+                "Favour directional strategies. Long straddle, momentum trades.",
+                "rgba(239,68,68,0.15)", "#ef4444"))
+
+        # Signal 2: IV Skew
+        if _iv_skew > 3:
+            _live_signals.append((f"📐 PUT PREMIUM SKEW: {_iv_skew:+.2f}%",
+                f"Put IV ({_atm_put_iv:.1f}%) > Call IV ({_atm_call_iv:.1f}%) — Fear premium elevated. "
+                f"Market pricing in downside risk. Consider: Sell put spreads / Buy calls cheaply.",
+                "rgba(239,68,68,0.10)", "#fca5a5"))
+        elif _iv_skew < -3:
+            _live_signals.append((f"📐 CALL PREMIUM SKEW: {_iv_skew:+.2f}%",
+                f"Call IV ({_atm_call_iv:.1f}%) > Put IV ({_atm_put_iv:.1f}%) — Unusual bullish IV skew. "
+                f"Rare signal: market pricing in upside risk. Consider: Sell call spreads / Buy puts cheaply.",
+                "rgba(34,197,94,0.10)", "#86efac"))
+        else:
+            _live_signals.append((f"📐 BALANCED SKEW: {_iv_skew:+.2f}%",
+                f"Call IV {_atm_call_iv:.1f}% / Put IV {_atm_put_iv:.1f}% — Fair pricing. "
+                f"No strong IV edge on either side.",
+                "rgba(148,163,184,0.10)", "#94a3b8"))
+
+        # Signal 3: PCR
+        if _pcr > 1.3:
+            _live_signals.append((f"🐻 PCR BEARISH: {_pcr:.2f}",
+                "Extremely high put buying. Contrarian signal: "
+                "market may be over-hedged. Watch for reversal if PCR stays > 1.4.",
+                "rgba(239,68,68,0.10)", "#fca5a5"))
+        elif _pcr < 0.7:
+            _live_signals.append((f"🐂 PCR BULLISH: {_pcr:.2f}",
+                "Extremely low put activity. Complacency risk: "
+                "no tail protection in the market. Sharp drops are possible without a cushion.",
+                "rgba(34,197,94,0.10)", "#86efac"))
+        else:
+            _live_signals.append((f"➡️ PCR NEUTRAL: {_pcr:.2f}",
+                "Balanced put/call activity. No clear directional bias from OI.",
+                "rgba(148,163,184,0.10)", "#94a3b8"))
+
+        # Signal 4: Delta positioning
+        if _atm_call_delta > 0.55:
+            _live_signals.append((f"📊 ATM DELTA SKEWED LONG: {_atm_call_delta:.3f}",
+                "ATM call delta > 0.55 indicates spot is slightly above the true ATM. "
+                "Calls are gaining intrinsic value faster. Slight bullish structural bias.",
+                "rgba(34,197,94,0.10)", "#22c55e"))
+        elif _atm_call_delta < 0.45:
+            _live_signals.append((f"📊 ATM DELTA SKEWED SHORT: {_atm_call_delta:.3f}",
+                "ATM call delta < 0.45 indicates spot is slightly below the true ATM. "
+                "Puts gaining faster. Slight bearish structural bias.",
+                "rgba(239,68,68,0.10)", "#ef4444"))
+
+        # Signal 5: Max Pain gravity
+        if abs(_dist_to_mp_pct) < 1.5:
+            _live_signals.append((f"🎯 MAX PAIN PIN: {_dist_to_mp_pct:+.2f}% from ₹{_mp:,.0f}",
+                "Spot is very close to max pain. Option writers have maximum incentive to pin here. "
+                "Very low probability of large move unless external catalyst.",
+                "rgba(192,132,252,0.15)", "#c084fc"))
+
+        # Render signals
+        _sc1, _sc2 = st.columns(2)
+        for _idx, (_title, _body, _bg, _col) in enumerate(_live_signals):
+            _col_target = _sc1 if _idx % 2 == 0 else _sc2
+            with _col_target:
+                st.markdown(f"""
+<div style="background:{_bg};border-left:4px solid {_col};
+border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+<b style="color:{_col};font-size:0.88rem;">{_title}</b><br>
+<span style="font-size:0.78rem;color:#cbd5e1;">{_body}</span>
+</div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # SECTION 3: STRIKE-BY-STRIKE CONDITIONAL TABLE
+        # ═══════════════════════════════════════════════════════════════════
+        st.markdown("## 📋 Section 3: Strike-Level Conditional Signals")
+        st.markdown("*Every strike's dealer obligation, IV signal, and delta-based move probability*")
+
+        _strike_signals = []
+        for _, _sr in _gdf.iterrows():
+            _sk   = int(_sr["strike"])
+            _coi  = float(_sr["call_oi"])
+            _poi  = float(_sr["put_oi"])
+            _cgex = float(_sr["call_gex"])
+            _pgex = float(_sr["put_gex"])
+            _ngex = float(_sr["total_gex"])
+            _civ  = float(_sr.get("call_iv", 0))
+            _piv  = float(_sr.get("put_iv", 0))
+            _cd   = float(_sr.get("call_delta", 0))
+            _pd   = float(_sr.get("put_delta", 0))
+            _sk_dist_pct = (_sk - spot_price) / spot_price * 100
+
+            # Dealer obligation at this strike
+            if abs(_cgex) > abs(_pgex):
+                _dealer_bias = f"Short calls — sell into rally (GEX {_cgex/1e7:.2f} Cr)"
+            else:
+                _dealer_bias = f"Short puts — buy on dip (GEX {_pgex/1e7:.2f} Cr)"
+
+            # IV signal
+            _iv_sig = ("🔥 Hot" if max(_civ, _piv) > 18 else
+                       "🟡 Warm" if max(_civ, _piv) > 14 else "❄️ Cool")
+
+            # Delta-based prob
+            _call_prob = f"{_cd*100:.0f}%"
+            _put_prob  = f"{abs(_pd)*100:.0f}%"
+
+            # Structural signal
+            if _sk == _call_wall_strike:
+                _sk_signal = "🔴 CALL WALL — Max resistance"
+            elif _sk == _put_wall_strike:
+                _sk_signal = "🟢 PUT WALL — Max support"
+            elif abs(_sk - _gflip) < 50:
+                _sk_signal = "🔄 FLIP ZONE — Regime boundary"
+            elif abs(_sk - _mp) < 50:
+                _sk_signal = "🎯 MAX PAIN — Expiry pin target"
+            elif _sk == int(_c_wall_gex):
+                _sk_signal = "⚡ GAMMA WALL — Dealer ceiling"
+            elif _ngex > 0:
+                _sk_signal = "🟩 Positive GEX — stabilising"
+            else:
+                _sk_signal = "🟥 Negative GEX — amplifying"
+
+            _strike_signals.append({
+                "Strike": f"₹{_sk:,}",
+                "Dist%": f"{_sk_dist_pct:+.1f}%",
+                "Call OI (L)": f"{_coi/1e5:.1f}",
+                "Put OI (L)":  f"{_poi/1e5:.1f}",
+                "PCR": f"{(_poi/_coi):.2f}" if _coi > 0 else "—",
+                "Call IV%": f"{_civ:.1f}",
+                "Put IV%":  f"{_piv:.1f}",
+                "IV Signal": _iv_sig,
+                "Call Δ": f"{_cd:.3f}",
+                "Put Δ":  f"{_pd:.3f}",
+                "Call Prob ↑": _call_prob,
+                "Put Prob ↓": _put_prob,
+                "Dealer Bias": _dealer_bias,
+                "Signal": _sk_signal,
+            })
+
+        _ss_df = pd.DataFrame(_strike_signals)
+
+        def _style_ss(row):
+            s   = [""] * len(row)
+            sig = str(row["Signal"])
+            si  = list(row.index).index("Signal")
+            di  = list(row.index).index("Dist%")
+            iv  = str(row["IV Signal"])
+            ivi = list(row.index).index("IV Signal")
+            dist_val = float(str(row["Dist%"]).replace("%","").replace("+",""))
+
+            # Highlight ATM row gold
+            if abs(dist_val) < 0.3:
+                return ["background-color:rgba(250,204,21,0.18);border:1px solid #fbbf24;"] * len(row)
+
+            if "CALL WALL" in sig:
+                s[si] = "background-color:rgba(239,68,68,0.55);color:white;font-weight:bold;"
+                s[0]  = "background-color:rgba(239,68,68,0.20);"
+            elif "PUT WALL" in sig:
+                s[si] = "background-color:rgba(34,197,94,0.55);color:white;font-weight:bold;"
+                s[0]  = "background-color:rgba(34,197,94,0.20);"
+            elif "FLIP" in sig:
+                s[si] = "background-color:rgba(234,179,8,0.55);color:black;font-weight:bold;"
+                s[0]  = "background-color:rgba(234,179,8,0.18);"
+            elif "MAX PAIN" in sig:
+                s[si] = "background-color:rgba(192,132,252,0.55);color:white;font-weight:bold;"
+                s[0]  = "background-color:rgba(192,132,252,0.18);"
+            elif "GAMMA WALL" in sig:
+                s[si] = "background-color:rgba(249,115,22,0.55);color:white;font-weight:bold;"
+
+            if "🔥" in iv:
+                s[ivi] = "background-color:rgba(249,115,22,0.50);color:white;font-weight:bold;"
+            elif "🟡" in iv:
+                s[ivi] = "background-color:rgba(234,179,8,0.30);color:black;"
+            return s
+
+        st.dataframe(
+            _ss_df.style.apply(_style_ss, axis=1),
+            use_container_width=True, hide_index=True,
+            height=min(700, 36 * (len(_ss_df) + 2) + 3),
             column_config={
-                "Strike":       st.column_config.TextColumn("Strike",        width="small"),
-                "Type":         st.column_config.TextColumn("Type",          width="small"),
-                "Call (Prev)":  st.column_config.TextColumn("Call Prev",     width="small"),
-                "Call (Exp)":   st.column_config.TextColumn("Call Exp ★",    width="small"),
-                "Call Δ":       st.column_config.TextColumn("Call Δ",        width="small"),
-                "Call Δ%":      st.column_config.TextColumn("Call Δ%",       width="small"),
-                "Put (Prev)":   st.column_config.TextColumn("Put Prev",      width="small"),
-                "Put (Exp)":    st.column_config.TextColumn("Put Exp ★",     width="small"),
-                "Put Δ":        st.column_config.TextColumn("Put Δ",         width="small"),
-                "Put Δ%":       st.column_config.TextColumn("Put Δ%",        width="small"),
-                "Straddle Prev":st.column_config.TextColumn("Strd Prev",     width="small"),
-                "Straddle Exp": st.column_config.TextColumn("Strd Exp",      width="small"),
-                "Straddle Δ":   st.column_config.TextColumn("Strd Δ",        width="small"),
-                "Signal":       st.column_config.TextColumn("Signal",        width="medium"),
+                "Strike":      st.column_config.TextColumn(width="small"),
+                "Dist%":       st.column_config.TextColumn(width="small"),
+                "Call OI (L)": st.column_config.TextColumn(width="small"),
+                "Put OI (L)":  st.column_config.TextColumn(width="small"),
+                "PCR":         st.column_config.TextColumn(width="small"),
+                "Call IV%":    st.column_config.TextColumn(width="small"),
+                "Put IV%":     st.column_config.TextColumn(width="small"),
+                "IV Signal":   st.column_config.TextColumn(width="small"),
+                "Call Δ":      st.column_config.TextColumn(width="small"),
+                "Put Δ":       st.column_config.TextColumn(width="small"),
+                "Call Prob ↑": st.column_config.TextColumn(width="small"),
+                "Put Prob ↓":  st.column_config.TextColumn(width="small"),
+                "Dealer Bias": st.column_config.TextColumn(width="large"),
+                "Signal":      st.column_config.TextColumn(width="medium"),
             },
         )
 
         st.markdown("""
-        **Legend:**
-        - **★ Exp columns** = Expected price at 9:15 (using IEP + last IV)
-        - 🟢 **Green Δ** = Premium expected to RISE at open
-        - 🔴 **Red Δ** = Premium expected to FALL at open
-        - 🌟 **ATM row** = Strike closest to today's expected open
-        """)
+<div style="font-size:11px;color:#6b7280;padding:6px 0;">
+<b>Legend:</b> &nbsp;
+<span style="background:rgba(239,68,68,0.55);color:white;padding:1px 5px;border-radius:2px;">🔴 Call Wall</span>&nbsp;
+<span style="background:rgba(34,197,94,0.55);color:white;padding:1px 5px;border-radius:2px;">🟢 Put Wall</span>&nbsp;
+<span style="background:rgba(234,179,8,0.55);color:black;padding:1px 5px;border-radius:2px;">🔄 Flip Zone</span>&nbsp;
+<span style="background:rgba(192,132,252,0.55);color:white;padding:1px 5px;border-radius:2px;">🎯 Max Pain</span>&nbsp;
+<span style="background:rgba(250,204,21,0.18);border:1px solid #fbbf24;padding:1px 5px;border-radius:2px;">🟡 ATM Strike</span>&nbsp;
+<span style="background:rgba(249,115,22,0.50);color:white;padding:1px 5px;border-radius:2px;">🔥 High IV</span>
+&nbsp;·&nbsp; <b>Call/Put Prob:</b> abs(Delta) × 100 = market-implied probability of expiring in-the-money
+</div>""", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ─────────────────────────────────────────────────────────────────────
-        # SECTION 5: WHAT-IF SCENARIO TOOL
-        # ─────────────────────────────────────────────────────────────────────
-        st.markdown("### 🔬 What-If Scenario — Try Different Opening Prices")
+        # ── disclaimer ────────────────────────────────────────────────────
+        with st.expander("⚠️ Methodology & Disclaimers", expanded=False):
+            st.markdown("""
+**Dealer Obligation probabilities** are structural (mechanical) estimates based on GEX levels,
+not statistical backtests. Actual outcomes depend on news, macro events, and liquidity conditions.
 
-        with st.expander("▶ Run Multiple Opening Scenarios", expanded=False):
-            wf_c1, wf_c2, wf_c3 = st.columns(3)
+**Call/Put Probability (Δ-based)** = `abs(Delta) × 100`. This is the risk-neutral, model-implied
+probability of the option expiring in-the-money. It assumes Black-Scholes log-normal distribution.
 
-            with wf_c1:
-                scenario_gap = st.slider(
-                    "Gap from Prev Close (pts)",
-                    min_value=-500, max_value=500,
-                    value=int(gap), step=int(si),
-                    key="scenario_gap_slider",
-                )
-            with wf_c2:
-                scenario_spot = prev_close + scenario_gap
-                st.metric("Scenario Spot", f"₹{scenario_spot:,.2f}",
-                          delta=f"{scenario_gap:+.0f} ({scenario_gap/prev_close*100:+.2f}%)")
-            with wf_c3:
-                st.caption(f"""
-**Scenario parameters:**
-- Prev close: ₹{prev_close:,.2f}
-- Scenario spot: ₹{scenario_spot:,.2f}
-- Gap: {scenario_gap:+.0f} pts
-- IV source: Last session close
-                """)
+**IV signals** use ATM IV from the current chain fetch. IV can change rapidly intraday.
 
-            # Recalculate for scenario
-            if scenario_spot != pm_spot:
-                sc_df = calculate_premarket_prices(
-                    gex_df, scenario_spot, expiry_date,
-                    st.session_state.risk_free_rate_val,
-                )
-                sc_summary = get_premarket_summary(
-                    sc_df, scenario_spot, prev_close, expiry_date)
-
-                sc_atm = sc_summary.get("atm_strike", atm_strike)
-
-                sc1, sc2, sc3, sc4 = st.columns(4)
-                sc1.metric("ATM Strike",
-                           f"₹{sc_atm:,}")
-                sc2.metric("ATM Call",
-                           f"₹{sc_summary.get('atm_call_exp', 0):.2f}",
-                           delta=f"{sc_summary.get('atm_call_chg', 0):+.2f}")
-                sc3.metric("ATM Put",
-                           f"₹{sc_summary.get('atm_put_exp', 0):.2f}",
-                           delta=f"{sc_summary.get('atm_put_chg', 0):+.2f}")
-                sc4.metric("Straddle",
-                           f"₹{sc_summary.get('atm_straddle_exp', 0):.2f}",
-                           delta=f"{sc_summary.get('atm_straddle_chg', 0):+.2f}")
-
-        st.markdown("---")
-
-        # ─────────────────────────────────────────────────────────────────────
-        # SECTION 6: STRATEGY NOTES
-        # ─────────────────────────────────────────────────────────────────────
-        st.markdown("### 💡 Pre-Market Strategy Guidance")
-
-        with st.expander("📘 How To Use This For Trading (Click to Read)", expanded=False):
-            st.markdown(f"""
-#### 📌 Reading the Expected Prices
-
-**If market gaps UP ({symbol} opens above prev close):**
-- ITM Calls become more expensive (deep ITM calls rise sharply)
-- OTM Calls become ATM or near-ATM (check the Type column shift)
-- All Puts lose value (look for Put Δ% in red)
-- Strategy: **Pre-place call buy order at expected price** before 9:15
-
-**If market gaps DOWN ({symbol} opens below prev close):**
-- ITM Puts become more expensive
-- OTM Puts become ATM or near-ATM
-- All Calls lose value
-- Strategy: **Pre-place put buy order at expected price** before 9:15
-
----
-
-#### 🎯 Key Numbers to Note Before 9:15
-
-| What to note | Where to find it | Why it matters |
-|:---|:---|:---|
-| ATM Strike at open | "ATM" row in Type column | Where to trade |
-| Expected ATM Call | Call (Exp) at ATM row | Your buy price reference |
-| Expected ATM Put | Put (Exp) at ATM row | Your buy price reference |
-| Straddle cost | Straddle Exp at ATM | Max move needed to profit |
-| Breakeven zone | Metrics above | Where spot must go for profit |
-
----
-
-#### ⚠️ Important Limitations
-
-1. **IV stays flat in this model** — In reality, IV may spike on gap-open
-   (volatility crush or spike adds/subtracts ₹5–50 from expected prices)
-2. **The first 1 minute (9:15–9:16)** often sees extreme price discovery
-3. **Use as a reference range**, not an exact price — place orders at expected price ± 5%
-4. **Market orders at open are dangerous** — always use limit orders
-5. **Best used between 9:05–9:12 AM** when IEP is most stable
-
----
-
-#### 🔄 Workflow
-
-```
-9:00 AM → Open GEX Terminal, go to Pre-Market tab
-9:05 AM → Click "🔄 Fetch Live IEP" (first stable reading)
-9:07 AM → Click again (most accurate — matching has begun)
-9:07 AM → Note ATM strike, expected call/put prices
-9:10 AM → Place limit orders in Kite at expected prices
-9:15 AM → Market opens, orders fill at or near expected prices
-```
-            """)
-
-        # Footer
-        last_upd = (st.session_state.last_update.strftime("%d-%b-%Y %H:%M:%S IST")
-                    if st.session_state.last_update else "Unknown")
-        st.markdown(f"""
-        <div style="text-align:center;color:#4b5563;font-size:11px;padding:16px;">
-            IV source: Last chain fetch ({last_upd}) · 
-            BSM pricing · Not financial advice
-        </div>
-        """, unsafe_allow_html=True)
-
+**Educational only. Not financial advice. Options trading involves substantial risk of loss.**
+""")
 # ── welcome screen ────────────────────────────────────────────────────────────
 else:
     st.info("👈 Authenticate Kite, fetch option chain, then click **🟢 GO LIVE**.")
