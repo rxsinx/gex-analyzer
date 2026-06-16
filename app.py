@@ -2072,7 +2072,7 @@ ATM Γ: {_atm_gamma:.6f}
 Market is in the *final approach zone*. Dealers are short {_cw_oi/1e5:.1f}L calls at ₹{_call_wall_strike:,}.
 As price creeps up:
 - Dealer delta-selling increases exponentially (gamma effect)
-- Each ₹50 rally → dealers sell **{format_number(abs(_cw_gex)/1e7 * _cw_delta * 50):.0f}** in futures
+- Each ₹50 rally → dealers sell **{format_number(abs(_cw_gex) * _cw_delta * 50)}** in futures
 - **Retail bulls** are fighting a mechanical selling machine
 - **Institutional shorts** at ₹{_call_wall_strike:,} are gaining delta advantage
 - **Winning move:** Fade the wall unless PCR drops below 0.7 (indicating wall capitulation)
