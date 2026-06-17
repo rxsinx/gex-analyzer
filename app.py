@@ -1921,6 +1921,21 @@ ATM Γ: {_atm_gamma:.6f}
 
         st.markdown("---")
 
+        st.markdown("""
+<style>
+.gex-signal-table table { width:100%; border-collapse:collapse; }
+.gex-signal-table th, .gex-signal-table td {
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    vertical-align: top !important;
+    font-size: 0.78rem !important;
+    padding: 6px 8px !important;
+    line-height: 1.4 !important;
+}
+.gex-signal-table th { background-color: rgba(30,41,59,0.9) !important; color:#e2e8f0 !important; }
+</style>
+""", unsafe_allow_html=True)
         # ═══════════════════════════════════════════════════════════════════
         # SECTION 1: GAME THEORY — DEALER vs RETAIL/INSTITUTIONAL
         # ═══════════════════════════════════════════════════════════════════
@@ -1931,6 +1946,46 @@ ATM Γ: {_atm_gamma:.6f}
 > their delta. This creates **predictable mechanical flows** at key GEX levels.
 """)
 
+        # ── Auto-derivation helpers: percentile-based, self-calibrating ────
+        def _derive_strength(value, series, labels=("Very Strong","Strong","Moderate","Weak")):
+            """Rank value's percentile within series; return (label, emoji)."""
+            s = series.dropna()
+            if s.empty or len(s) < 2:
+                return labels[2], "🟡"
+            pct = (s < abs(value)).mean() * 100
+            if pct >= 85:   return labels[0], "🔴🔴"
+            elif pct >= 65: return labels[1], "🔴"
+            elif pct >= 35: return labels[2], "🟡"
+            else:           return labels[3], "⚪"
+
+        def _derive_stall_prob(gex_value, gex_abs_series):
+            """Percentile-rank GEX magnitude → stall probability bucket."""
+            s = gex_abs_series.dropna()
+            if s.empty or len(s) < 2:
+                return "Moderate (45–60%)"
+            pct = (s < abs(gex_value)).mean() * 100
+            if pct >= 85:   return "Very High (80–90%)"
+            elif pct >= 60: return "High (65–80%)"
+            elif pct >= 35: return "Moderate (45–60%)"
+            else:           return "Low (20–40%)"
+
+        def _derive_breakout_signal(oi_value, oi_series, pcr_value, pcr_threshold, direction="below"):
+            """Auto breakout condition text based on OI percentile + PCR comparison."""
+            s = oi_series.dropna()
+            pct = (s < abs(oi_value)).mean() * 100 if not s.empty else 50
+            wall_desc = "very heavy" if pct >= 85 else "heavy" if pct >= 65 else "moderate" if pct >= 35 else "light"
+            if direction == "below":
+                pcr_cond = f"PCR < {pcr_threshold:.2f}" if pcr_value >= pcr_threshold else f"PCR already < {pcr_threshold:.2f} ✓"
+            else:
+                pcr_cond = f"PCR > {pcr_threshold:.2f}" if pcr_value <= pcr_threshold else f"PCR already > {pcr_threshold:.2f} ✓"
+            return f"{pcr_cond} AND OI thins from {wall_desc} level"
+
+        # Reference series for percentile derivation — entire chain
+        _call_oi_series  = _gdf["call_oi"]
+        _put_oi_series   = _gdf["put_oi"]
+        _call_gex_series = _gdf["call_gex"].abs()
+        _put_gex_series  = _gdf["put_gex"].abs()
+        
         # Build the game theory table from live matrix data
         _gt_data = []
 
@@ -1953,7 +2008,10 @@ ATM Γ: {_atm_gamma:.6f}
             "Call Δ": f"{_cw_delta:.3f}",
             "GEX (Cr)": f"{_cw_gex/1e7:.2f}",
             "Dist %": f"{_dist_to_cwall_pct:+.2f}%",
-            "Signal": "📉 Resistance / Sell rally" if _dist_to_cwall_pct > 0 else "⚠️ Already through — short squeeze risk",
+            "Signal": (
+                f"📉 {_derive_strength(_cw_oi, _call_oi_series)[1]} {_derive_strength(_cw_oi, _call_oi_series)[0]} resistance"
+                if _dist_to_cwall_pct > 0 else "⚠️ Already through — short squeeze risk"
+            ),
         })
 
         # Row 2: Put Wall — Dealer short puts
@@ -1975,7 +2033,10 @@ ATM Γ: {_atm_gamma:.6f}
             "Call Δ": "—",
             "GEX (Cr)": f"{_pw_gex/1e7:.2f}",
             "Dist %": f"{-_dist_to_pwall_pct:+.2f}%",
-            "Signal": "📈 Support / Buy dip" if _above_pwall else "⚠️ Already below — put wall broken",
+            "Signal": (
+                f"📈 {_derive_strength(_pw_oi, _put_oi_series)[1]} {_derive_strength(_pw_oi, _put_oi_series)[0]} support"
+                if _above_pwall else "⚠️ Already below — put wall broken"
+            ),
         })
 
         # Row 3: Gamma Flip
@@ -1989,7 +2050,11 @@ ATM Γ: {_atm_gamma:.6f}
             "Call Δ": "—",
             "GEX (Cr)": "0.00",
             "Dist %": f"{_dist_to_flip_pct:+.2f}%",
-            "Signal": "🟢 Stable regime" if _above_flip else "🔴 Volatile regime — trending",
+            "Signal": (
+                f"🟢 Stable regime ({(_net_gx/_gdf['total_gex'].abs().sum()*100 if _gdf['total_gex'].abs().sum()>0 else 0):+.0f}% net bias)"
+                if _above_flip else
+                f"🔴 Volatile regime ({(_net_gx/_gdf['total_gex'].abs().sum()*100 if _gdf['total_gex'].abs().sum()>0 else 0):+.0f}% net bias)"
+            ),
         })
 
         # Row 4: Max Pain
@@ -2003,9 +2068,11 @@ ATM Γ: {_atm_gamma:.6f}
             "Call Δ": "—",
             "GEX (Cr)": "—",
             "Dist %": f"{_dist_to_mp_pct:+.2f}%",
-            "Signal": ("🎯 Pin likely — <2% away" if abs(_dist_to_mp_pct) < 2 else
-                       "🟡 Moderate pull" if abs(_dist_to_mp_pct) < 5 else
-                       "⬜ Too far for pin"),
+            "Signal": (
+                f"🎯 Pin likely — {abs(_dist_to_mp_pct):.1f}% away" if abs(_dist_to_mp_pct) < 2 else
+                f"🟡 Moderate pull — {abs(_dist_to_mp_pct):.1f}% away" if abs(_dist_to_mp_pct) < 5 else
+                f"⬜ Too far — {abs(_dist_to_mp_pct):.1f}% away"
+            ),
         })
 
         # Row 5: Call GEX Wall (Gamma-based resistance)
@@ -2023,7 +2090,10 @@ ATM Γ: {_atm_gamma:.6f}
             "Call Δ": "—",
             "GEX (Cr)": f"{_gdf['call_gex'].min()/1e7:.2f}",
             "Dist %": f"{(_c_wall_gex - spot_price)/spot_price*100:+.2f}%",
-            "Signal": "🔴 Gamma ceiling" if _c_wall_gex > spot_price else "⚠️ Price above gamma wall",
+            "Signal": (
+                f"🔴 {_derive_strength(_gdf['call_gex'].min(), _call_gex_series)[1]} gamma ceiling"
+                if _c_wall_gex > spot_price else "⚠️ Price above gamma wall"
+            ),
         })
 
         _gt_df = pd.DataFrame(_gt_data)
@@ -2055,10 +2125,9 @@ ATM Γ: {_atm_gamma:.6f}
                 s[si] = "background-color:rgba(192,132,252,0.35);font-weight:bold;"
             return s
 
-        st.dataframe(
-            _gt_df[_display_cols].style.apply(_style_gt, axis=1),
-            use_container_width=True, hide_index=True, height=240,
-        )
+        st.markdown('<div class="gex-signal-table">', unsafe_allow_html=True)
+        st.table(_gt_df[_display_cols].style.apply(_style_gt, axis=1))
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # ── Game-theory narrative ─────────────────────────────────────────
         st.markdown("---")
@@ -2133,9 +2202,9 @@ Spot ₹{spot_price:,.0f} is between key levels:
             "Scenario": f"IF spot rallies to Call Wall ₹{_call_wall_strike:,}",
             "Trigger": f"Price moves +{_rally_pct:.2f}%",
             "Dealer Response": "Sell futures (delta hedge short calls)",
-            "Prob of Stall": "High (75–85%)" if _cw_oi > 5e6 else "Moderate (50–65%)",
-            "IV Effect": "Call IV crushed (-2 to -5%) / Put IV rises (fear)",
-            "Breakout Condition": f"PCR < 0.7 AND Call OI builds >₹{_call_wall_strike+50:,}",
+            "Prob of Stall": _derive_stall_prob(_cw_gex, _call_gex_series),
+            "IV Effect": (f"Call IV likely compresses from {_cw_iv:.1f}% (gamma crush near wall)"),
+            "Breakout Condition": _derive_breakout_signal(_cw_oi, _call_oi_series, _pcr, 0.7, direction="below"),
             "Best Trade": "Bear Call Spread at wall / Iron Condor upper leg",
             "Risk": "Short gamma squeeze if wall breaks — exit immediately",
         })
@@ -2147,9 +2216,13 @@ Spot ₹{spot_price:,.0f} is between key levels:
             "Scenario": f"IF spot drops to Put Wall ₹{_put_wall_strike:,}",
             "Trigger": f"Price moves -{_drop_pct:.2f}%",
             "Dealer Response": "Buy futures (delta hedge short puts)",
-            "Prob of Stall": "High (70–80%)" if _pw_oi > 5e6 else "Moderate (45–60%)",
-            "IV Effect": "Put IV spike (+3 to +8%) / Straddle cost expands",
-            "Breakout Condition": f"Put OI collapses at ₹{_put_wall_strike:,} AND PCR > 1.4",
+            "Prob of Stall": _derive_stall_prob(_pw_gex, _put_gex_series),
+            "IV Effect": (
+                f"Put IV likely expands from {_pw_iv:.1f}% (dealer buying pressure builds)"
+            ),
+            "Breakout Condition": _derive_breakout_signal(
+                _pw_oi, _put_oi_series, _pcr, 1.4, direction="above"
+            )
             "Best Trade": "Bull Put Spread at wall / Buy ATM call on touch",
             "Risk": "Wall breaks → next put wall is the target",
         })
@@ -2161,7 +2234,10 @@ Spot ₹{spot_price:,.0f} is between key levels:
             "Scenario": f"IF spot {'drops below' if _above_flip else 'reclaims'} Flip ₹{_gflip:,.0f}",
             "Trigger": f"Price moves {'-' if _above_flip else '+'}{_flip_move/spot_price*100:.2f}%",
             "Dealer Response": "REGIME CHANGE — dealers flip hedging direction",
-            "Prob of Stall": "Low (15–25%) — momentum trades trigger",
+            "Prob of Stall": (
+                f"Low ({max(10, 30 - abs(_dist_to_flip_pct)*5):.0f}–"
+                f"{max(20, 40 - abs(_dist_to_flip_pct)*5):.0f}%) — closer to flip = lower stall odds"
+            ),
             "IV Effect": "VIX spike expected (+15–30%); all IVs expand",
             "Breakout Condition": "Already in breakout if flip broken",
             "Best Trade": ("Buy ATM Put + Short OTM Call (bear spread)" if _above_flip
@@ -2176,9 +2252,11 @@ Spot ₹{spot_price:,.0f} is between key levels:
             "Scenario": f"IF spot drifts to Max Pain ₹{_mp:,.0f} near expiry",
             "Trigger": f"{'Already at' if _mp_pct < 1 else f'±{_mp_pct:.2f}% move needed'}",
             "Dealer Response": "Option writers delta-hedge to pin near max pain",
-            "Prob of Stall": ("Very High (85–95%) if DTE < 3" if _mp_pct < 2 else
-                              "High (65–75%) if DTE < 7" if _mp_pct < 4 else
-                              "Moderate (40–55%) if DTE > 7"),
+            "Prob of Stall": (
+                f"Very High (85–95%) — only {_mp_pct:.1f}% away" if _mp_pct < 2 else
+                f"High (65–75%) — {_mp_pct:.1f}% away" if _mp_pct < 4 else
+                f"Moderate (40–55%) — {_mp_pct:.1f}% away"
+            ),
             "IV Effect": "IV crushed as theta decay accelerates near expiry",
             "Breakout Condition": "Large unexpected event (earnings, macro shock)",
             "Best Trade": "Short Straddle at Max Pain if DTE < 5",
@@ -2206,10 +2284,9 @@ Spot ₹{spot_price:,.0f} is between key levels:
                 s[pi] = "background-color:rgba(239,68,68,0.30);font-weight:bold;"
             return s
 
-        st.dataframe(
-            _cp_df.style.apply(_style_cp, axis=1),
-            use_container_width=True, hide_index=True, height=200,
-        )
+        st.markdown('<div class="gex-signal-table">', unsafe_allow_html=True)
+        st.table(_cp_df.style.apply(_style_cp, axis=1))
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # ── Conditional signal readout ────────────────────────────────────
         st.markdown("---")
