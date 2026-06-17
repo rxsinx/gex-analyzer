@@ -2222,7 +2222,7 @@ Spot ₹{spot_price:,.0f} is between key levels:
             ),
             "Breakout Condition": _derive_breakout_signal(
                 _pw_oi, _put_oi_series, _pcr, 1.4, direction="above"
-            )
+            ),
             "Best Trade": "Bull Put Spread at wall / Buy ATM call on touch",
             "Risk": "Wall breaks → next put wall is the target",
         })
