@@ -918,7 +918,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                     if 0 < cd <= 1:
                         alpha = round(0.08 + cd * 0.30, 2)
                         styles.loc["Call Δ", col] = (
-                            f"background-color:rgba(34,197,94,{alpha});color:white;"
+                            f"background-color:rgba(34,197,94,{alpha});color:black;"
                         )
                 except (TypeError, ValueError):
                     pass
@@ -927,7 +927,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
                     if -1 <= pd_val < 0:
                         alpha = round(0.08 + abs(pd_val) * 0.30, 2)
                         styles.loc["Put Δ", col] = (
-                            f"background-color:rgba(239,68,68,{alpha});color:white;"
+                            f"background-color:rgba(239,68,68,{alpha});color:black;"
                         )
                 except (TypeError, ValueError):
                     pass
