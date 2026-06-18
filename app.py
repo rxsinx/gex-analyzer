@@ -515,7 +515,7 @@ with st.sidebar:
                             gx   = calculate_gex(df_f, new_spot, expiry_date, risk_free_rate)
                             st.session_state.gex_df       = gx
                             st.session_state.gamma_levels = find_gamma_levels(gx, new_spot)
-                        st.success(f"₹{new_spot:,.2f}")
+                       #st.success(f"₹{new_spot:,.2f}")
                     else:
                         st.warning("Spot not available (market closed?)")
                 except KiteAuthError as e:
