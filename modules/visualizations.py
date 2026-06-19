@@ -27,12 +27,12 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     fig.add_trace(go.Bar(
         x=gex_df['strike'], y=gex_df['call_gex'], name='Call GEX', 
         marker_color='rgba(239,68,68,0.7)', 
-        hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:.0f}<extra></extra>'
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:.7f}<extra></extra>'
     ))
     fig.add_trace(go.Bar(
         x=gex_df['strike'], y=gex_df['put_gex'], name='Put GEX', 
         marker_color='rgba(34,197,94,0.7)', 
-        hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:.0f}<extra></extra>'
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:.7f}<extra></extra>'
     ))
 
     # ── 2. ADD VISUAL MARKER LINES ONLY (NO TEXT OVERLAYS) ─────────────────────
@@ -302,7 +302,7 @@ def plot_spot_gex_levels(gex_df, spot_price, gamma_levels, price_range=500):
             mode="lines",
             line=dict(color="#60a5fa", width=2.5),
             hovertemplate=(
-                "<b>Strike:</b> ₹%{x:,.7f}<br>"
+                "<b>Strike:</b> ₹%{x:,.0f}<br>"
                 "<b>Cumulative GEX:</b> %{y:,.0f}<extra></extra>"
             ),
         ),
