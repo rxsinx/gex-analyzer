@@ -645,7 +645,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
     # FIX: Track daywise movement (spot_delta) instead of micro tick-to-tick momentum
     tick_arrow  = "▲" if spot_delta > 0 else "▼" if spot_delta < 0 else "●"
     tick_class  = "tick-up" if spot_delta > 0 else "tick-dn" if spot_delta < 0 else "tick-flat"
-    # The '+' specifier forces Python to print +206.10 or -206.10 automatically
+    # The '+' / '-' specifier 
     display_text = f"{tick_arrow} {spot_delta:+,.2f} ({spot_delta_pct:+.2f}%)"
     
     now_ist = datetime.now(IST)
@@ -668,7 +668,7 @@ if st.session_state.data_loaded and st.session_state.gex_df is not None:
 <div class="{bar_class}">
   <span>{mode_tag}&nbsp;&nbsp;
     <span class="ticker {tick_class}">
-      {symbol} &nbsp; ₹{spot_price:,.2f} &nbsp; {tick_arrow} {abs(spot_delta):,.2f}
+      {symbol} &nbsp; ₹{spot_price:,.2f} &nbsp; {tick_arrow} {(spot_delta):,.2f}
       ({spot_delta_pct:+.2f}%)
     </span>
   </span>
