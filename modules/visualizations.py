@@ -302,7 +302,7 @@ def plot_spot_gex_levels(gex_df, spot_price, gamma_levels, price_range=500):
             mode="lines",
             line=dict(color="#60a5fa", width=2.5),
             hovertemplate=(
-                "<b>Strike:</b> ₹%{x:,.0f}<br>"
+                "<b>Strike:</b> ₹%{x:,.7f}<br>"
                 "<b>Cumulative GEX:</b> %{y:,.0f}<extra></extra>"
             ),
         ),
