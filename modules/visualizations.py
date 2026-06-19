@@ -89,7 +89,7 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
         x=strikes_arr, y=call_oi_l,
         mode="lines",
         name="Call OI (L)",
-        line=dict(color="rgb(47, 49, 181)", width=1.5, dash="solid"),
+        line=dict(color="rgb(47, 49, 181)", width=1, dash="solid"),
         hovertemplate="Strike ₹%{x}<br>Call OI: %{y:.2f}L<extra></extra>",
     ), secondary_y=True)
 
@@ -97,7 +97,7 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
         x=strikes_arr, y=put_oi_l,
         mode="lines",
         name="Put OI (L)",
-        line=dict(color="rgb(42,42,0)", width=1.5, dash="solid"),
+        line=dict(color="rgb(42,42,0)", width=1, dash="solid"),
         hovertemplate="Strike ₹%{x}<br>Put OI: %{y:.2f}L<extra></extra>",
     ), secondary_y=True)
 
