@@ -2368,7 +2368,7 @@ Spot ₹{spot_price:,.0f} is between key levels:
                 st.markdown(f"""
 <div style="background:{_bg};border-left:4px solid {_col};
 border-radius:6px;padding:12px 14px;margin-bottom:10px;">
-<b style="color:{_col};font-size:0.88rem;">{_title}</b><br>
+<b style="color:{_col};font-size:0.5rem;">{_title}</b><br>
 <span style="font-size:0.78rem;color:#22282e;">{_body}</span>
 </div>""", unsafe_allow_html=True)
 
