@@ -25,14 +25,14 @@ def plot_gex_profile(gex_df, spot_price, gamma_levels):
     
     # ── 1. ADD BARS FOR CALL AND PUT GEX ───────────────────────────────────────
     fig.add_trace(go.Bar(
-        x=gex_df['strike'], y=gex_df['call_gex'], name='Call GEX', 
+        x=gex_df['strike'], y=gex_df['call_gex']/1e7, name='Call GEX', 
         marker_color='rgba(239,68,68,0.7)', 
-        hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:.f}<extra></extra>'
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Call GEX:</b> %{y:.2f}<extra></extra>'
     ))
     fig.add_trace(go.Bar(
-        x=gex_df['strike'], y=gex_df['put_gex'], name='Put GEX', 
+        x=gex_df['strike'], y=gex_df['put_gex']/1e7, name='Put GEX', 
         marker_color='rgba(34,197,94,0.7)', 
-        hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:.f}<extra></extra>'
+        hovertemplate='<b>Strike:</b> %{x}<br><b>Put GEX:</b> %{y:.2f}<extra></extra>'
     ))
 
     # ── 2. ADD VISUAL MARKER LINES ONLY (NO TEXT OVERLAYS) ─────────────────────
