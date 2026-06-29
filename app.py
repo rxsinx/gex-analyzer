@@ -1843,7 +1843,7 @@ GEX levels shift when OI changes (slowly); GEX *magnitude* shifts when spot move
         """)
     
     with tab8:
-        st.markdown("#### **🧠 GEX Signals — Dealer vs Retail Game Theory & Conditional Probability**")
+        st.markdown("###### **🧠 GEX Signals — Dealer vs Retail Game Theory & Conditional Probability**")
 
         # ═══════════════════════════════════════════════════════════════════
         # DERIVE SIGNALS DIRECTLY FROM THE LIVE MATRIX DATA
