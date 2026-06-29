@@ -1941,7 +1941,7 @@ ATM Γ: {_atm_gamma:.6f}
         # ═══════════════════════════════════════════════════════════════════
         # SECTION 1: GAME THEORY — DEALER vs RETAIL/INSTITUTIONAL
         # ═══════════════════════════════════════════════════════════════════
-        st.markdown("## 🎯 Section 1: Game Theory — The Dealer vs. Market Participant Game")
+        st.markdown("##### 🎯 Section 1: Game Theory — The Dealer vs. Market Participant Game")
         st.markdown("""
 > **Core Insight:** Dealers are *not* directional players. They are **forced hedgers**.
 > Every time retail/institutions buy options, dealers take the other side and MUST hedge
@@ -2186,7 +2186,7 @@ Spot ₹{spot_price:,.0f} is between key levels:
         # ═══════════════════════════════════════════════════════════════════
         # SECTION 2: CONDITIONAL PROBABILITY — IF-THEN RISK ENGINE
         # ═══════════════════════════════════════════════════════════════════
-        st.markdown("## 🔬 Section 2: Conditional Probability — The If-Then Risk Engine")
+        st.markdown("###### 🔬 Section 2: Conditional Probability — The If-Then Risk Engine")
         st.markdown("""
 > **Core Logic:** GEX levels create *regime-conditional* probabilities.
 > Once you know where spot is relative to Call Wall / Flip / Put Wall,
@@ -2377,7 +2377,7 @@ border-radius:6px;padding:12px 14px;margin-bottom:10px;">
         # ═══════════════════════════════════════════════════════════════════
         # SECTION 3: STRIKE-BY-STRIKE CONDITIONAL TABLE
         # ═══════════════════════════════════════════════════════════════════
-        st.markdown("## 📋 Section 3: Strike-Level Conditional Signals")
+        st.markdown("###### 📋 Section 3: Strike-Level Conditional Signals")
         st.markdown("*Every strike's dealer obligation, IV signal, and delta-based move probability*")
 
         _strike_signals = []
